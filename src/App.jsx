@@ -108,17 +108,36 @@ const BLOCS_RITE = [
   },
 ];
 
-const SYSTEM = `Tu es Réel, coach de transformation personnelle — méthode CHARITÉ de DBR (Dreams Become Reality).
+const SYSTEM = `Tu es Réel, Compagnon DBR — accompagnateur de transformation personnelle et professionnelle, méthode CHARITÉ de DBR (Dreams Become Reality).
+
+IDENTITÉ :
+Tu n'es pas un thérapeute. Tu n'es pas un motivateur. Tu es un associé exigeant et bienveillant — quelqu'un qui respecte assez ton interlocuteur pour ne pas lui mentir, qui connaît son monde, et qui l'aide à voir ce qu'il ne veut pas voir. Le genre de personne rare qu'on cherche toute sa vie dans son entourage.
+
+CIBLE :
+Entrepreneurs et cadres africains, principalement ivoiriens. Ces profils :
+- Sont habitués à être compétents — ils n'aiment pas se sentir accompagnés de manière condescendante
+- Ont peu de temps et détectent rapidement ce qui est superficiel
+- Jonglent entre pression familiale, pression sociale de la réussite visible et ambitions personnelles
+- Beaucoup ont fait des études à l'étranger — ils connaissent les codes occidentaux mais vivent dans un contexte africain
+- La question de la légitimité et du regard des pairs est centrale
 
 TU ES :
 - Expert en psychologie positive, psychologie comportementale et développement personnel
-- Spécialiste du coaching de vie et de carrière
+- Spécialiste de l'accompagnement de vie et de carrière
 - Profond connaisseur de la culture africaine, et plus précisément ivoirienne
 - Tu connais les traditions des ethnies (Baoulé, Bété, Dioula, Sénoufo, Agni, Attié, Abbey, etc.)
 - Tu maîtrises le jargon ivoirien (nouchi, expressions courantes : "on est ensemble", "c'est comment", "y'a moyen", "on dit quoi", "gbê", "c'est dja")
 - Tu comprends l'hospitalité légendaire ivoirienne, l'importance de la communauté, de la famille élargie
 - Tu connais le contexte socio-politique et économique : la résilience, la débrouillardise, la foi
 - Tu sais que l'ambition en Côte d'Ivoire passe souvent par le commerce, l'entrepreneuriat, le digital
+- Maîtrise la communication stratégique et la négociation
+- Sait recadrer une peur en opportunité sans minimiser
+- Identifie les vraies objections derrière les rationalisations
+- Utilise le silence et la question de précision comme levier
+- Sait quand pousser et quand laisser respirer
+
+REGISTRE :
+Tu t'adaptes au registre de ton interlocuteur. Avec un cadre qui écrit en français soutenu, tu restes professionnel et précis. Avec quelqu'un qui glisse du nouchi, tu peux y répondre avec une touche naturelle — sans jamais perdre ta crédibilité. Tu peux dire "on va gérer ça" au bon moment sans perdre ton autorité.
 
 ${CTX}
 
@@ -129,6 +148,9 @@ TON STYLE :
 - Tu peux utiliser des expressions ivoiriennes naturellement quand ça renforce le propos
 - Tu es exigeant mais bienveillant — tu ne laisses pas passer le flou
 - Tu identifies les forces ET les signaux faibles (peur, évitement, vague, contradiction)
+
+ACCUEIL APRÈS ABSENCE :
+Si le participant revient après une absence, accueille-le sans jugement. Pas de remarque passive-agressive. Montre que tu es content qu'il soit là et reprends là où il s'est arrêté.
 
 RÈGLES STRICTES :
 - Termine TOUJOURS par "✓ Solide." quand la réponse est validée
@@ -150,7 +172,15 @@ SYNTHÈSES DE BLOC :
 BLOC VISION :
 - Aide à projeter le rêve dans le concret
 - Pousse la précision sensorielle (lieu, heure, montant, personnes)
-- Challenge les visions trop floues ou trop idéalisées`;
+- Challenge les visions trop floues ou trop idéalisées
+
+IMPORTANT : Tu fais de l'accompagnement, JAMAIS du coaching. Tu es un Compagnon, JAMAIS un coach. N'utilise jamais les mots "coach", "coaching", "coacher".
+
+BILAN MENSUEL (4 questions fixes J+30) :
+1. Qu'est-ce que tu as concrètement fait depuis le dernier échange ?
+2. Qu'est-ce qui t'a le plus résisté ?
+3. Qu'est-ce que tu as appris sur toi-même ?
+4. Quel est ton engagement pour les 30 prochains jours ?`;
 
 // ══════════════════════════════════════════════════════════════════════════
 // LOGO
@@ -266,7 +296,7 @@ function Auth({ onLogin }) {
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><Logo size={90} /></div>
           <div style={{ fontSize: 24, fontWeight: 900, color: T.orange, letterSpacing: "6px" }}>DBR</div>
           <div style={{ fontSize: 12, color: T.blue, letterSpacing: "4px", fontWeight: 600, marginTop: 4 }}>MÉTHODE CHARITÉ</div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Coach {APP_NAME} — Dreams Become Reality</div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Compagnon {APP_NAME} — Dreams Become Reality</div>
         </div>
         <div style={{ background: T.cardBg, border: `1px solid rgba(232,84,10,0.3)`, borderRadius: 16, padding: "32px 24px" }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginBottom: 24, textAlign: "center" }}>
@@ -308,10 +338,11 @@ function Aiguillage({ user, onKnow, onDontKnow, onLogout }) {
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}><Logo size={72} /></div>
           <div style={{ fontSize: 14, color: T.muted, marginBottom: 2 }}>Bienvenue, {user.name}</div>
-          <div style={{ fontSize: 12, color: T.blue, letterSpacing: "3px" }}>COACH {APP_NAME.toUpperCase()}</div>
+          <div style={{ fontSize: 12, color: T.blue, letterSpacing: "3px" }}>COMPAGNON {APP_NAME.toUpperCase()}</div>
         </div>
         <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "36px 28px" }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 10, textAlign: "center" }}>À toi de jouer</div>
+          <div style={{ fontSize: 15, fontWeight: 500, color: T.orange, marginBottom: 8, textAlign: "center", fontStyle: "italic", lineHeight: 1.6 }}>"Je suis Réel. Ce que tu t'apprêtes à vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?"</div>
+          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", marginBottom: 20, lineHeight: 1.5 }}>Pas un outil de productivité. Vivre de ce pourquoi tu es fait. Pas survivre — vivre.</div>
           <div style={{ fontSize: 15, color: T.textDim, textAlign: "center", marginBottom: 32, lineHeight: 1.7 }}>Une seule question pour commencer :<br /><strong style={{ color: T.text }}>As-tu déjà une idée — même floue — de la direction que tu veux donner à ta vie ?</strong></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <button onClick={() => setChoice("know")} style={{ padding: "18px 24px", background: choice === "know" ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : "rgba(232,84,10,0.08)", border: `2px solid ${choice === "know" ? T.orange : "rgba(232,84,10,0.2)"}`, borderRadius: 12, cursor: "pointer", textAlign: "left" }}>
@@ -401,7 +432,8 @@ function Admin({ user, onBack }) {
   const stats = {
     total: allUsers.length,
     admins: allUsers.filter(u => u.is_admin).length,
-    started: 0,
+    started: allUsers.filter(u => { const s = LS.get(`dbr_sess_${u.email}`); return s && s.msgs?.length > 0; }).length,
+    completed: allUsers.filter(u => { const s = LS.get(`dbr_sess_${u.email}`); return s && s.phase === "conclusion"; }).length,
     completed: 0,
     codesUsed: codes.filter(c => c.used_by).length,
     codesAvailable: codes.filter(c => codeStatusFn(c) === "available").length,
@@ -445,7 +477,7 @@ function Admin({ user, onBack }) {
     setCodeSending(c.code);
     try {
       const expire = c.expires_at ? `<br><br>Ce code est valable jusqu'au ${new Date(c.expires_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.` : "";
-      const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: `Ton code d'invitation DBR — Coach ${APP_NAME}`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours de coaching DBR avec le coach ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
+      const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: `DBR - Code d'invitation accompagnement Méthode CHARITE`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours d'accompagnement avec ton Compagnon ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
       if (res.ok) setCodeMsg(`✓ Code envoyé à ${to}`); else { const d = await res.json(); setCodeMsg(d.error || "Erreur d'envoi."); }
     } catch { setCodeMsg("Erreur réseau."); }
     setCodeSending(null); setTimeout(() => setCodeMsg(""), 4000);
@@ -477,8 +509,8 @@ function Admin({ user, onBack }) {
   function dlTranscript(email) {
     const sess = LS.get(`dbr_sess_${email}`); if (!sess || !sess.msgs?.length) return alert("Aucun transcript disponible (données locales uniquement).");
     const u = allUsers.find(x => x.email === email);
-    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Coach ${APP_NAME}`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-    const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCoach : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
+    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
+    const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${(u?.name || email).replace(/\s+/g, "_")}.txt` });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
@@ -527,7 +559,9 @@ function Admin({ user, onBack }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
           {statCard("Participants", stats.total, T.blue)}
           {statCard("Admins", stats.admins, T.orange)}
-          {statCard("Codes dispo", stats.codesAvailable, T.green)}
+          {statCard("Parcours initiés", stats.started, "#9B59B6")}
+          {statCard("Parcours achevés", stats.completed, T.green)}
+          {statCard("Codes dispo", stats.codesAvailable, "#3498DB")}
           {statCard("Codes utilisés", stats.codesUsed, "#F39C12")}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
@@ -823,7 +857,7 @@ export default function App() {
     setLoading(true); setScreen("conclusion");
     const summary = blocsRef.current.map(b => { const ba = Object.entries(answersRef.current).filter(([k]) => k.startsWith(b.id + "_")).map(([, v]) => v.slice(0, 300)).join(" / "); const bs = syntheses[b.id] ? syntheses[b.id].slice(0, 200) : ""; return `BLOC ${b.id} (${b.label}):\n${ba}\nSynthèse: ${bs}`; }).join("\n\n");
     try {
-      const r = await callClaude(`[CONCLUSION FINALE — MÉTHODE CHARITÉ — Coach ${APP_NAME}]\n\n${summary}\n\nGénère une conclusion puissante :\n1. La conclusion choisie (1 à 4) et pourquoi\n2. La formule du rêve racine\n3. Le programme adapté (plan 90j en 3 phases 30/30/30 avec jalons concrets en FCFA)\n4. Message personnel ancré dans le contexte ivoirien\n\nProse fluide, 350 mots max. Commence par "CONCLUSION [N] : [titre]".`);
+      const r = await callClaude(`[CONCLUSION FINALE — MÉTHODE CHARITÉ — Compagnon ${APP_NAME}]\n\n${summary}\n\nGénère une conclusion puissante :\n1. La conclusion choisie (1 à 4) et pourquoi\n2. La formule du rêve racine\n3. Le programme adapté (plan 90j en 3 phases 30/30/30 avec jalons concrets en FCFA)\n4. Message personnel ancré dans le contexte ivoirien\n\nProse fluide, 350 mots max. Commence par "CONCLUSION [N] : [titre]".`);
       addMsg({ role: "assistant", content: r, conc: true });
       // Save to multi-sessions
       const session = buildSave();
@@ -839,8 +873,8 @@ export default function App() {
 
   function download() {
     try {
-      const lines = msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `Coach ${APP_NAME}`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-      const full = `PARCOURS DBR — MÉTHODE CHARITÉ\nCoach : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"═".repeat(50)}\n\n${lines}`;
+      const lines = msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
+      const full = `PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"═".repeat(50)}\n\n${lines}`;
       const blob = new Blob([full], { type: "text/plain;charset=utf-8" });
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${APP_NAME}_${user.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.txt` });
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -854,7 +888,7 @@ export default function App() {
     setBlocs(chosenBlocs); blocsRef.current = chosenBlocs;
     const b0 = chosenBlocs[0], q0 = b0.questions[0];
     const path = knowsDream ? "5 Pourquoi → Vision → RITE" : "CHA → 5 Pourquoi → Vision → RITE";
-    const intro = `On est ensemble, ${user.name} ! 🔥 Je suis ${APP_NAME}, ton coach DBR.
+    const intro = `${user.name}, je suis Réel, ton Compagnon. Ce que tu t'apprêtes à vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?
 
 Ton parcours : **${path}**.
 
@@ -917,7 +951,7 @@ ${q0.q}`;
           <div style={{ maxWidth: 540, width: "100%" }}>
             <div style={{ textAlign: "center", marginBottom: 32 }}>
               <Logo size={72} />
-              <div style={{ fontSize: 12, color: T.blue, letterSpacing: "3px", marginTop: 10 }}>COACH {APP_NAME.toUpperCase()}</div>
+              <div style={{ fontSize: 12, color: T.blue, letterSpacing: "3px", marginTop: 10 }}>COMPAGNON {APP_NAME.toUpperCase()}</div>
             </div>
             <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "32px 24px" }}>
               <div style={{ fontSize: 17, fontWeight: 600, color: T.text, marginBottom: 6 }}>Parcours en cours</div>
@@ -955,7 +989,7 @@ ${q0.q}`;
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 52, gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Logo size={30} />
-                <span style={{ fontSize: 11, color: T.muted, letterSpacing: "2px" }}>COACH {APP_NAME.toUpperCase()}</span>
+                <span style={{ fontSize: 11, color: T.muted, letterSpacing: "2px" }}>COMPAGNON {APP_NAME.toUpperCase()}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 {savedOk && <span style={{ fontSize: 10, color: T.green }}>✓ Sauvé</span>}

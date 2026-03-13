@@ -23,7 +23,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: 'Réel — Coach DBR <onboarding@resend.dev>',
+        from: 'Réel — Compagnon DBR <onboarding@resend.dev>',
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
