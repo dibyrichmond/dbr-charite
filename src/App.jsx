@@ -201,21 +201,7 @@ function Auth({ onLogin }) {
   const [email, setEmail] = useState(""), [pwd, setPwd] = useState(""), [pwd2, setPwd2] = useState(""), [name, setName] = useState(""), [invCode, setInvCode] = useState("");
   const [err, setErr] = useState(""), [info, setInfo] = useState("");
   const [showPwd, setShowPwd] = useState(false), [showPwd2, setShowPwd2] = useState(false);
-
-  // Ensure super admin exists
-  useEffect(() => {
-    const users = LS.get("dbr_users") || {};
-    if (!users[SUPER_ADMIN]) {
-      users[SUPER_ADMIN] = { name: "Admin DBR", hash: hashPwd("Dbr@2026!"), isAdmin: true, role: "superadmin", createdAt: Date.now(), approved: true };
-      LS.set("dbr_users", users);
-    }
-    // Ensure default invitation codes exist
-    const codes = LS.get("dbr_invitations") || [];
-    if (codes.length === 0) {
-      const defaults = Array.from({ length: 3 }, () => ({ code: genCode(), createdBy: SUPER_ADMIN, createdAt: Date.now(), usedBy: null, role: "participant" }));
-      LS.set("dbr_invitations", defaults);
-    }
-  }, []);
+  const [busy, setBusy] = useState(false);
 
   const pwdField = (ph, val, set, show, setShow) => (
     <div style={{ position: "relative", marginBottom: 12 }}>
@@ -231,45 +217,44 @@ function Auth({ onLogin }) {
       onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
   );
 
-  function doLogin() {
+  async function doLogin() {
     setErr(""); if (!email || !pwd) return setErr("Remplis tous les champs.");
-    const users = LS.get("dbr_users") || {}; const u = users[email.toLowerCase().trim()];
-    if (!u) return setErr("Aucun compte avec cet email.");
-    if (u.hash !== hashPwd(pwd)) return setErr("Mot de passe incorrect.");
-    if (!u.approved && !u.isAdmin) return setErr("Ton compte est en attente d'approbation par l'administrateur.");
-    const usr = { email: email.toLowerCase().trim(), name: u.name, isAdmin: u.isAdmin || false, role: u.role || "participant" };
-    LS.set("dbr_current_user", usr);
-    onLogin(usr);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", email, password: pwd }) });
+      const data = await res.json();
+      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur de connexion."); }
+      LS.set("dbr_current_user", data.user);
+      onLogin(data.user);
+    } catch { setErr("Erreur réseau. Vérifie ta connexion."); }
+    setBusy(false);
   }
 
-  function doRegister() {
+  async function doRegister() {
     setErr(""); if (!email || !pwd || !name || !invCode) return setErr("Remplis tous les champs, y compris le code d'invitation.");
     if (pwd !== pwd2) return setErr("Les mots de passe ne correspondent pas.");
     if (pwd.length < 6) return setErr("6 caractères minimum.");
-    const codes = LS.get("dbr_invitations") || [];
-    const codeObj = codes.find(c => c.code === invCode.trim().toUpperCase() && !c.usedBy);
-    if (!codeObj) return setErr("Code d'invitation invalide ou déjà utilisé.");
-    if (codeObj.expiresAt && Date.now() > codeObj.expiresAt) return setErr("Ce code a expiré. Demande un nouveau code à l'administrateur.");
-    const em = email.toLowerCase().trim();
-    if (codeObj.forEmail && codeObj.forEmail !== em) return setErr("Ce code est réservé à une autre adresse email.");
-    const users = LS.get("dbr_users") || {};
-    if (users[em]) return setErr("Email déjà utilisé.");
-    users[em] = { name: name.trim(), hash: hashPwd(pwd), isAdmin: false, role: codeObj.role || "participant", createdAt: Date.now(), approved: true, invitedBy: codeObj.createdBy };
-    LS.set("dbr_users", users);
-    codeObj.usedBy = em; codeObj.usedAt = Date.now();
-    LS.set("dbr_invitations", codes);
-    const usr = { email: em, name: name.trim(), isAdmin: false, role: codeObj.role || "participant" };
-    LS.set("dbr_current_user", usr);
-    onLogin(usr);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "register", email, password: pwd, name, invCode }) });
+      const data = await res.json();
+      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur d'inscription."); }
+      LS.set("dbr_current_user", data.user);
+      onLogin(data.user);
+    } catch { setErr("Erreur réseau. Vérifie ta connexion."); }
+    setBusy(false);
   }
 
-  function doReset() {
+  async function doReset() {
     setErr(""); if (!email) return setErr("Entre ton email.");
-    const users = LS.get("dbr_users") || {};
-    if (!users[email.toLowerCase().trim()]) return setErr("Aucun compte trouvé.");
-    const tmp = genCode();
-    users[email.toLowerCase().trim()].hash = hashPwd(tmp); LS.set("dbr_users", users);
-    setInfo(`Mot de passe temporaire : ${tmp}`); setMode("login");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset", email }) });
+      const data = await res.json();
+      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur."); }
+      setInfo(`Mot de passe temporaire : ${data.tempPassword}`); setMode("login");
+    } catch { setErr("Erreur réseau."); }
+    setBusy(false);
   }
 
   const btn = { width: "100%", padding: "15px", background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" };
@@ -295,9 +280,9 @@ function Auth({ onLogin }) {
           {mode === "register" && pwdField("Confirmer le mot de passe", pwd2, setPwd2, showPwd2, setShowPwd2)}
           {mode === "register" && inp("Code d'invitation", invCode, setInvCode)}
           <div style={{ marginTop: 4 }}>
-            {mode === "login" && <button onClick={doLogin} style={btn}>Se connecter</button>}
-            {mode === "register" && <button onClick={doRegister} style={btn}>Créer mon compte</button>}
-            {mode === "reset" && <button onClick={doReset} style={btn}>Réinitialiser</button>}
+            {mode === "login" && <button onClick={doLogin} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Connexion..." : "Se connecter"}</button>}
+            {mode === "register" && <button onClick={doRegister} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Création..." : "Créer mon compte"}</button>}
+            {mode === "reset" && <button onClick={doReset} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Envoi..." : "Réinitialiser"}</button>}
           </div>
           {mode === "login" && <>
             <button onClick={() => { setMode("register"); setErr(""); setInfo(""); }} style={{ background: "none", border: "none", color: T.blue, fontSize: 14, cursor: "pointer", padding: "6px 0", fontFamily: "inherit", display: "block", width: "100%", textAlign: "center", marginBottom: 4 }}>Pas encore de compte ? S'inscrire</button>
@@ -382,8 +367,9 @@ function Bubble({ msg, id, onSpeak, speaking, activeSpeakId }) {
 function Admin({ user, onBack }) {
   const T = useContext(ThemeCtx);
   const [tab, setTab] = useState("dashboard");
-  const [__, bump] = useState(0);
-  const refresh = () => bump(n => n + 1);
+  const [allUsers, setAllUsers] = useState([]);
+  const [codes, setCodes] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(true);
   const [newRole, setNewRole] = useState("participant");
   const [codeEmail, setCodeEmail] = useState("");
   const [codeCount, setCodeCount] = useState(1);
@@ -393,39 +379,61 @@ function Admin({ user, onBack }) {
   const [emailTo, setEmailTo] = useState(""), [emailSubject, setEmailSubject] = useState(""), [emailBody, setEmailBody] = useState("");
   const [emailStatus, setEmailStatus] = useState("");
 
-  const users = LS.get("dbr_users") || {};
-  const codes = LS.get("dbr_invitations") || [];
   const WEEK = 7 * 24 * 3600 * 1000;
-  const isExpired = (c) => c.expiresAt && Date.now() > c.expiresAt;
-  const codeStatusFn = (c) => c.usedBy ? "used" : isExpired(c) ? "expired" : "available";
-  const allUsers = Object.keys(users).map(em => {
-    const u = users[em];
-    const sessions = LS.get(`dbr_all_sessions_${em}`) || [];
-    const current = LS.get(`dbr_sess_${em}`);
-    return { email: em, ...u, sessions, currentSession: current, sessionCount: sessions.length + (current ? 1 : 0) };
-  });
+  const isExpired = (c) => c.expires_at && Date.now() > c.expires_at;
+  const codeStatusFn = (c) => c.used_by ? "used" : isExpired(c) ? "expired" : "available";
+
+  async function loadData() {
+    setAdminLoading(true);
+    try {
+      const [usersRes, codesRes] = await Promise.all([
+        fetch("/api/admin-users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
+        fetch("/api/codes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", adminEmail: user.email }) })
+      ]);
+      if (usersRes.ok) { const d = await usersRes.json(); setAllUsers(d.users || []); }
+      if (codesRes.ok) { const d = await codesRes.json(); setCodes(d.codes || []); }
+    } catch {}
+    setAdminLoading(false);
+  }
+
+  useEffect(() => { loadData(); }, []);
+
   const stats = {
     total: allUsers.length,
-    admins: allUsers.filter(u => u.isAdmin).length,
-    started: allUsers.filter(u => u.currentSession?.msgs?.length > 0).length,
-    completed: allUsers.filter(u => u.currentSession?.phase === "conclusion" || u.sessions.some(s => s.phase === "conclusion")).length,
-    codesUsed: codes.filter(c => c.usedBy).length,
+    admins: allUsers.filter(u => u.is_admin).length,
+    started: 0,
+    completed: 0,
+    codesUsed: codes.filter(c => c.used_by).length,
     codesAvailable: codes.filter(c => codeStatusFn(c) === "available").length,
   };
 
-  function generateCodes() {
-    const existing = LS.get("dbr_invitations") || [];
-    const email = codeEmail.trim().toLowerCase();
-    const cnt = email ? 1 : Math.max(1, Math.min(10, codeCount));
-    const newCodes = Array.from({ length: cnt }, () => ({
-      code: genCode(), createdBy: user.email, createdAt: Date.now(), usedBy: null, role: newRole,
-      ...(email ? { forEmail: email, expiresAt: Date.now() + WEEK } : {}),
-    }));
-    LS.set("dbr_invitations", [...existing, ...newCodes]);
-    setCodeEmail("");
-    setCodeMsg(`✓ ${cnt} code${cnt > 1 ? "s" : ""} créé${cnt > 1 ? "s" : ""}${email ? ` pour ${email} (7j)` : ""}`);
+  async function generateCodes() {
+    try {
+      const res = await fetch("/api/codes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", adminEmail: user.email, role: newRole, forEmail: codeEmail, count: codeCount })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCodeEmail("");
+        setCodeMsg(`✓ ${data.created} code${data.created > 1 ? "s" : ""} créé${data.created > 1 ? "s" : ""}${codeEmail.trim() ? ` pour ${codeEmail.trim()} (7j)` : ""}`);
+        loadData();
+      } else setCodeMsg(data.error || "Erreur.");
+    } catch { setCodeMsg("Erreur réseau."); }
     setTimeout(() => setCodeMsg(""), 4000);
-    refresh();
+  }
+
+  async function deleteCode(codeId) {
+    if (!window.confirm("Supprimer ce code ?")) return;
+    try {
+      const res = await fetch("/api/codes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", adminEmail: user.email, codeId })
+      });
+      if (res.ok) { setCodeMsg("✓ Code supprimé"); loadData(); }
+      else { const d = await res.json(); setCodeMsg(d.error || "Erreur suppression."); }
+    } catch { setCodeMsg("Erreur réseau."); }
+    setTimeout(() => setCodeMsg(""), 3000);
   }
 
   function copyCode(code) {
@@ -433,49 +441,51 @@ function Admin({ user, onBack }) {
   }
 
   async function sendCodeEmail(c) {
-    const to = c.forEmail || ""; if (!to) return;
+    const to = c.for_email || ""; if (!to) return;
     setCodeSending(c.code);
     try {
-      const expire = c.expiresAt ? `<br><br>Ce code est valable jusqu'au ${new Date(c.expiresAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.` : "";
+      const expire = c.expires_at ? `<br><br>Ce code est valable jusqu'au ${new Date(c.expires_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.` : "";
       const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: `Ton code d'invitation DBR — Coach ${APP_NAME}`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours de coaching DBR avec le coach ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
-      if (res.ok) setCodeMsg(`✓ Code envoyé à ${to}`); else setCodeMsg("Erreur d'envoi.");
+      if (res.ok) setCodeMsg(`✓ Code envoyé à ${to}`); else { const d = await res.json(); setCodeMsg(d.error || "Erreur d'envoi."); }
     } catch { setCodeMsg("Erreur réseau."); }
     setCodeSending(null); setTimeout(() => setCodeMsg(""), 4000);
   }
 
-  function toggleAdmin(email) {
+  async function toggleAdmin(email) {
     if (email === SUPER_ADMIN) return;
-    const u = LS.get("dbr_users") || {};
-    if (!u[email]) return;
-    u[email].isAdmin = !u[email].isAdmin;
-    u[email].role = u[email].isAdmin ? "admin" : "participant";
-    LS.set("dbr_users", u);
-    refresh();
+    try {
+      const res = await fetch("/api/admin-users", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-admin", adminEmail: user.email, targetEmail: email })
+      });
+      if (res.ok) loadData();
+    } catch {}
   }
 
-  function removeUser(email) {
+  async function removeUser(email) {
     if (email === SUPER_ADMIN || email === user.email) return;
     if (!window.confirm(`Supprimer ${email} ?`)) return;
-    const u = LS.get("dbr_users") || {};
-    delete u[email];
-    LS.set("dbr_users", u);
-    LS.del(`dbr_sess_${email}`);
-    LS.del(`dbr_all_sessions_${email}`);
-    refresh();
+    try {
+      const res = await fetch("/api/admin-users", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", adminEmail: user.email, targetEmail: email })
+      });
+      if (res.ok) loadData();
+    } catch {}
   }
 
   function dlTranscript(email) {
-    const sess = LS.get(`dbr_sess_${email}`); if (!sess || !sess.msgs?.length) return alert("Aucun transcript.");
-    const u = users[email];
-    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u.name}${m.audio ? " (audio)" : ""}` : `Coach ${APP_NAME}`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-    const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCoach : ${APP_NAME}\nParticipant : ${u.name} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${u.name.replace(/\s+/g, "_")}.txt` });
+    const sess = LS.get(`dbr_sess_${email}`); if (!sess || !sess.msgs?.length) return alert("Aucun transcript disponible (données locales uniquement).");
+    const u = allUsers.find(x => x.email === email);
+    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Coach ${APP_NAME}`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
+    const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCoach : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${(u?.name || email).replace(/\s+/g, "_")}.txt` });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
   function exportCSV() {
-    const headers = ["Nom", "Email", "Rôle", "Admin", "Inscrit le", "Sessions", "Statut"];
-    const rows = allUsers.map(u => [u.name, u.email, u.role || "participant", u.isAdmin ? "Oui" : "Non", fmtDate(u.createdAt), u.sessionCount, u.currentSession?.phase === "conclusion" ? "Complété" : u.currentSession?.msgs?.length > 0 ? "En cours" : "Non débuté"]);
+    const headers = ["Nom", "Email", "Rôle", "Admin", "Inscrit le"];
+    const rows = allUsers.map(u => [u.name, u.email, u.role || "participant", u.is_admin ? "Oui" : "Non", fmtDate(u.created_at)]);
     const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_Export_${new Date().toISOString().slice(0, 10)}.csv` });
@@ -487,7 +497,7 @@ function Admin({ user, onBack }) {
     setEmailStatus("Envoi en cours...");
     try {
       const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: emailTo, subject: emailSubject, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:560px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:32px;"><div style="text-align:center;margin-bottom:20px;font-size:22px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="font-size:14px;line-height:1.8;color:#AAAAAA;">${emailBody.replace(/\n/g, "<br>")}</div></div></div>` }) });
-      if (res.ok) { setEmailStatus("✓ Email envoyé !"); setEmailTo(""); setEmailSubject(""); setEmailBody(""); } else setEmailStatus("Erreur d'envoi.");
+      if (res.ok) { setEmailStatus("✓ Email envoyé !"); setEmailTo(""); setEmailSubject(""); setEmailBody(""); } else { const d = await res.json(); setEmailStatus(d.error || "Erreur d'envoi."); }
     } catch { setEmailStatus("Erreur réseau."); }
   }
 
@@ -511,13 +521,14 @@ function Admin({ user, onBack }) {
         </div>
       </div>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
+        {adminLoading && <div style={{ textAlign: "center", padding: 40, color: T.muted }}>Chargement des données...</div>}
+        {!adminLoading && <>
         {/* DASHBOARD */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
           {statCard("Participants", stats.total, T.blue)}
           {statCard("Admins", stats.admins, T.orange)}
-          {statCard("En cours", stats.started, "#F39C12")}
-          {statCard("Complétés", stats.completed, T.green)}
-          {statCard("Codes dispo", stats.codesAvailable, T.blue)}
+          {statCard("Codes dispo", stats.codesAvailable, T.green)}
+          {statCard("Codes utilisés", stats.codesUsed, "#F39C12")}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
           {tabBtn("users", "👥 Participants")}
@@ -530,18 +541,17 @@ function Admin({ user, onBack }) {
         {tab === "users" && (
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ background: T.cardBg }}>{["Nom", "Email", "Rôle", "Inscrit", "Sessions", "Actions"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+              <thead><tr style={{ background: T.cardBg }}>{["Nom", "Email", "Rôle", "Inscrit", "Actions"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
               <tbody>{allUsers.map(u => (
                 <tr key={u.email} style={{ borderBottom: `1px solid ${T.border}` }}>
-                  <td style={{ padding: "12px 14px", color: T.text, fontWeight: 500 }}>{u.name}{u.email === SUPER_ADMIN && <span style={{ marginLeft: 6, fontSize: 9, color: T.orange, border: `1px solid ${T.orange}`, borderRadius: 4, padding: "1px 5px" }}>SUPER</span>}{u.isAdmin && u.email !== SUPER_ADMIN && <span style={{ marginLeft: 6, fontSize: 9, color: T.blue, border: `1px solid ${T.blue}`, borderRadius: 4, padding: "1px 5px" }}>ADMIN</span>}</td>
+                  <td style={{ padding: "12px 14px", color: T.text, fontWeight: 500 }}>{u.name}{u.email === SUPER_ADMIN && <span style={{ marginLeft: 6, fontSize: 9, color: T.orange, border: `1px solid ${T.orange}`, borderRadius: 4, padding: "1px 5px" }}>SUPER</span>}{u.is_admin && u.email !== SUPER_ADMIN && <span style={{ marginLeft: 6, fontSize: 9, color: T.blue, border: `1px solid ${T.blue}`, borderRadius: 4, padding: "1px 5px" }}>ADMIN</span>}</td>
                   <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{u.email}</td>
-                  <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: u.isAdmin ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: u.isAdmin ? T.orange : T.blue }}>{u.role || "participant"}</span></td>
-                  <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{fmtDate(u.createdAt)}</td>
-                  <td style={{ padding: "12px 14px", color: T.muted }}>{u.sessionCount}</td>
+                  <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: u.is_admin ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: u.is_admin ? T.orange : T.blue }}>{u.role || "participant"}</span></td>
+                  <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{fmtDate(u.created_at)}</td>
                   <td style={{ padding: "12px 14px" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {u.currentSession?.msgs?.length > 0 && <button onClick={() => dlTranscript(u.email)} style={{ padding: "3px 8px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, color: T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>}
-                    {u.email !== SUPER_ADMIN && <button onClick={() => toggleAdmin(u.email)} style={{ padding: "3px 8px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{u.isAdmin ? "Retirer admin" : "→ Admin"}</button>}
+                    <button onClick={() => dlTranscript(u.email)} style={{ padding: "3px 8px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, color: T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>
+                    {u.email !== SUPER_ADMIN && <button onClick={() => toggleAdmin(u.email)} style={{ padding: "3px 8px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{u.is_admin ? "Retirer admin" : "→ Admin"}</button>}
                     {u.email !== SUPER_ADMIN && u.email !== user.email && <button onClick={() => removeUser(u.email)} style={{ padding: "3px 8px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✕</button>}
                     </div>
                   </td>
@@ -604,16 +614,16 @@ function Admin({ user, onBack }) {
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead><tr style={{ background: T.cardBg }}>{["Code", "Rôle", "Destinataire", "Expire", "Statut", "Actions"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-                <tbody>{codes.slice().reverse().map((c, i) => {
+                <tbody>{codes.map((c, i) => {
                   const st = codeStatusFn(c);
                   const stColors = { available: { bg: "rgba(232,84,10,0.1)", color: T.orange, label: "Disponible" }, expired: { bg: "rgba(231,76,60,0.1)", color: T.red, label: "Expiré" }, used: { bg: "rgba(39,174,96,0.1)", color: T.green, label: "Utilisé" } };
                   const sc = stColors[st];
                   return (
-                    <tr key={i} style={{ borderBottom: `1px solid ${T.border}`, opacity: st === "expired" ? 0.5 : 1 }}>
+                    <tr key={c.id || i} style={{ borderBottom: `1px solid ${T.border}`, opacity: st === "expired" ? 0.5 : 1 }}>
                       <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, color: st === "available" ? T.orange : T.muted, fontSize: 15, letterSpacing: "2px" }}>{c.code}</td>
                       <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: c.role === "admin" ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: c.role === "admin" ? T.orange : T.blue }}>{c.role || "participant"}</span></td>
-                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.forEmail || c.usedBy || "— libre"}</td>
-                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 11 }}>{c.expiresAt ? fmtDate(c.expiresAt) : "∞"}</td>
+                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.for_email || c.used_by || "— libre"}</td>
+                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 11 }}>{c.expires_at ? fmtDate(c.expires_at) : "∞"}</td>
                       <td style={{ padding: "12px 14px" }}><span style={{ padding: "3px 10px", borderRadius: 10, fontSize: 11, background: sc.bg, color: sc.color, fontWeight: 500 }}>{sc.label}</span></td>
                       <td style={{ padding: "12px 14px" }}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -621,10 +631,11 @@ function Admin({ user, onBack }) {
                             <button onClick={() => copyCode(c.code)} style={{ padding: "4px 10px", background: copied === c.code ? "rgba(39,174,96,0.15)" : "rgba(74,184,232,0.08)", border: `1px solid ${copied === c.code ? "rgba(39,174,96,0.3)" : "rgba(74,184,232,0.2)"}`, borderRadius: 6, color: copied === c.code ? T.green : T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
                               {copied === c.code ? "✓ Copié" : "📋 Copier"}
                             </button>
-                            {c.forEmail && <button onClick={() => sendCodeEmail(c)} disabled={codeSending === c.code} style={{ padding: "4px 10px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: codeSending === c.code ? 0.5 : 1 }}>
+                            {c.for_email && <button onClick={() => sendCodeEmail(c)} disabled={codeSending === c.code} style={{ padding: "4px 10px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: codeSending === c.code ? 0.5 : 1 }}>
                               {codeSending === c.code ? "Envoi..." : "📧 Envoyer"}
                             </button>}
                           </>}
+                          <button onClick={() => deleteCode(c.id)} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🗑 Supprimer</button>
                         </div>
                       </td>
                     </tr>
@@ -658,6 +669,7 @@ function Admin({ user, onBack }) {
             <div style={{ fontSize: 12, color: T.muted, marginTop: 10 }}>Exporte la liste des participants, rôles, statuts</div>
           </div>
         )}
+        </>}
       </div>
     </div>
   );
