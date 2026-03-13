@@ -249,8 +249,10 @@ function Auth({ onLogin }) {
     const codes = LS.get("dbr_invitations") || [];
     const codeObj = codes.find(c => c.code === invCode.trim().toUpperCase() && !c.usedBy);
     if (!codeObj) return setErr("Code d'invitation invalide ou déjà utilisé.");
-    const users = LS.get("dbr_users") || {};
+    if (codeObj.expiresAt && Date.now() > codeObj.expiresAt) return setErr("Ce code a expiré. Demande un nouveau code à l'administrateur.");
     const em = email.toLowerCase().trim();
+    if (codeObj.forEmail && codeObj.forEmail !== em) return setErr("Ce code est réservé à une autre adresse email.");
+    const users = LS.get("dbr_users") || {};
     if (users[em]) return setErr("Email déjà utilisé.");
     users[em] = { name: name.trim(), hash: hashPwd(pwd), isAdmin: false, role: codeObj.role || "participant", createdAt: Date.now(), approved: true, invitedBy: codeObj.createdBy };
     LS.set("dbr_users", users);
@@ -324,16 +326,16 @@ function Aiguillage({ user, onKnow, onDontKnow, onLogout }) {
           <div style={{ fontSize: 12, color: T.blue, letterSpacing: "3px" }}>COACH {APP_NAME.toUpperCase()}</div>
         </div>
         <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "36px 28px" }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 10, textAlign: "center" }}>Avant de commencer</div>
-          <div style={{ fontSize: 15, color: T.textDim, textAlign: "center", marginBottom: 32, lineHeight: 1.7 }}>As-tu déjà une idée — même floue — de la direction que tu veux donner à ta vie ou à ta carrière ?</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 10, textAlign: "center" }}>À toi de jouer</div>
+          <div style={{ fontSize: 15, color: T.textDim, textAlign: "center", marginBottom: 32, lineHeight: 1.7 }}>Une seule question pour commencer :<br /><strong style={{ color: T.text }}>As-tu déjà une idée — même floue — de la direction que tu veux donner à ta vie ?</strong></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <button onClick={() => setChoice("know")} style={{ padding: "18px 24px", background: choice === "know" ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : "rgba(232,84,10,0.08)", border: `2px solid ${choice === "know" ? T.orange : "rgba(232,84,10,0.2)"}`, borderRadius: 12, cursor: "pointer", textAlign: "left" }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 4 }}>Oui, j'ai une idée</div>
-              <div style={{ fontSize: 13, color: T.muted }}>On va vérifier que c'est le vrai rêve</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 4 }}>Oui, j'ai une idée 💡</div>
+              <div style={{ fontSize: 13, color: T.muted }}>On va vérifier que c'est le vrai rêve — et le transformer en plan</div>
             </button>
             <button onClick={() => setChoice("dontknow")} style={{ padding: "18px 24px", background: choice === "dontknow" ? `linear-gradient(135deg,${T.blueD},${T.blue})` : "rgba(74,184,232,0.06)", border: `2px solid ${choice === "dontknow" ? T.blue : "rgba(74,184,232,0.15)"}`, borderRadius: 12, cursor: "pointer", textAlign: "left" }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 4 }}>Non, je cherche encore</div>
-              <div style={{ fontSize: 13, color: T.muted }}>On va l'identifier ensemble</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 4 }}>Non, je cherche encore 🧭</div>
+              <div style={{ fontSize: 13, color: T.muted }}>On va creuser ensemble pour trouver ta direction</div>
             </button>
           </div>
           {choice && <button onClick={() => choice === "know" ? onKnow() : onDontKnow()} style={{ width: "100%", padding: "15px", marginTop: 24, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", fontFamily: "inherit" }}>Commencer le parcours →</button>}
@@ -380,12 +382,22 @@ function Bubble({ msg, id, onSpeak, speaking, activeSpeakId }) {
 function Admin({ user, onBack }) {
   const T = useContext(ThemeCtx);
   const [tab, setTab] = useState("dashboard");
+  const [__, bump] = useState(0);
+  const refresh = () => bump(n => n + 1);
   const [newRole, setNewRole] = useState("participant");
+  const [codeEmail, setCodeEmail] = useState("");
+  const [codeCount, setCodeCount] = useState(1);
+  const [copied, setCopied] = useState(null);
+  const [codeSending, setCodeSending] = useState(null);
+  const [codeMsg, setCodeMsg] = useState("");
   const [emailTo, setEmailTo] = useState(""), [emailSubject, setEmailSubject] = useState(""), [emailBody, setEmailBody] = useState("");
   const [emailStatus, setEmailStatus] = useState("");
 
   const users = LS.get("dbr_users") || {};
   const codes = LS.get("dbr_invitations") || [];
+  const WEEK = 7 * 24 * 3600 * 1000;
+  const isExpired = (c) => c.expiresAt && Date.now() > c.expiresAt;
+  const codeStatusFn = (c) => c.usedBy ? "used" : isExpired(c) ? "expired" : "available";
   const allUsers = Object.keys(users).map(em => {
     const u = users[em];
     const sessions = LS.get(`dbr_all_sessions_${em}`) || [];
@@ -398,14 +410,37 @@ function Admin({ user, onBack }) {
     started: allUsers.filter(u => u.currentSession?.msgs?.length > 0).length,
     completed: allUsers.filter(u => u.currentSession?.phase === "conclusion" || u.sessions.some(s => s.phase === "conclusion")).length,
     codesUsed: codes.filter(c => c.usedBy).length,
-    codesAvailable: codes.filter(c => !c.usedBy).length,
+    codesAvailable: codes.filter(c => codeStatusFn(c) === "available").length,
   };
 
-  function generateCodes(count = 3) {
+  function generateCodes() {
     const existing = LS.get("dbr_invitations") || [];
-    const news = Array.from({ length: count }, () => ({ code: genCode(), createdBy: user.email, createdAt: Date.now(), usedBy: null, role: newRole }));
-    LS.set("dbr_invitations", [...existing, ...news]);
-    window.location.reload();
+    const email = codeEmail.trim().toLowerCase();
+    const cnt = email ? 1 : Math.max(1, Math.min(10, codeCount));
+    const newCodes = Array.from({ length: cnt }, () => ({
+      code: genCode(), createdBy: user.email, createdAt: Date.now(), usedBy: null, role: newRole,
+      ...(email ? { forEmail: email, expiresAt: Date.now() + WEEK } : {}),
+    }));
+    LS.set("dbr_invitations", [...existing, ...newCodes]);
+    setCodeEmail("");
+    setCodeMsg(`✓ ${cnt} code${cnt > 1 ? "s" : ""} créé${cnt > 1 ? "s" : ""}${email ? ` pour ${email} (7j)` : ""}`);
+    setTimeout(() => setCodeMsg(""), 4000);
+    refresh();
+  }
+
+  function copyCode(code) {
+    navigator.clipboard?.writeText(code).then(() => { setCopied(code); setTimeout(() => setCopied(null), 2000); }).catch(() => {});
+  }
+
+  async function sendCodeEmail(c) {
+    const to = c.forEmail || ""; if (!to) return;
+    setCodeSending(c.code);
+    try {
+      const expire = c.expiresAt ? `<br><br>Ce code est valable jusqu'au ${new Date(c.expiresAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.` : "";
+      const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: `Ton code d'invitation DBR — Coach ${APP_NAME}`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours de coaching DBR avec le coach ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
+      if (res.ok) setCodeMsg(`✓ Code envoyé à ${to}`); else setCodeMsg("Erreur d'envoi.");
+    } catch { setCodeMsg("Erreur réseau."); }
+    setCodeSending(null); setTimeout(() => setCodeMsg(""), 4000);
   }
 
   function toggleAdmin(email) {
@@ -415,7 +450,7 @@ function Admin({ user, onBack }) {
     u[email].isAdmin = !u[email].isAdmin;
     u[email].role = u[email].isAdmin ? "admin" : "participant";
     LS.set("dbr_users", u);
-    window.location.reload();
+    refresh();
   }
 
   function removeUser(email) {
@@ -426,7 +461,7 @@ function Admin({ user, onBack }) {
     LS.set("dbr_users", u);
     LS.del(`dbr_sess_${email}`);
     LS.del(`dbr_all_sessions_${email}`);
-    window.location.reload();
+    refresh();
   }
 
   function dlTranscript(email) {
@@ -503,10 +538,12 @@ function Admin({ user, onBack }) {
                   <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: u.isAdmin ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: u.isAdmin ? T.orange : T.blue }}>{u.role || "participant"}</span></td>
                   <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{fmtDate(u.createdAt)}</td>
                   <td style={{ padding: "12px 14px", color: T.muted }}>{u.sessionCount}</td>
-                  <td style={{ padding: "12px 14px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <td style={{ padding: "12px 14px" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {u.currentSession?.msgs?.length > 0 && <button onClick={() => dlTranscript(u.email)} style={{ padding: "3px 8px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, color: T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>}
                     {u.email !== SUPER_ADMIN && <button onClick={() => toggleAdmin(u.email)} style={{ padding: "3px 8px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{u.isAdmin ? "Retirer admin" : "→ Admin"}</button>}
-                    {u.email !== SUPER_ADMIN && u.email !== user.email && <button onClick={() => removeUser(u.email)} style={{ padding: "3px 8px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✕ Supprimer</button>}
+                    {u.email !== SUPER_ADMIN && u.email !== user.email && <button onClick={() => removeUser(u.email)} style={{ padding: "3px 8px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✕</button>}
+                    </div>
                   </td>
                 </tr>
               ))}</tbody>
@@ -517,30 +554,84 @@ function Admin({ user, onBack }) {
         {/* INVITATION CODES TAB */}
         {tab === "codes" && (
           <div>
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 12 }}>Générer des codes d'invitation</div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ padding: "8px 12px", background: T.inputBg, border: `1px solid ${T.border}`, borderRadius: 6, color: T.text, fontSize: 13 }}>
-                  <option value="participant">Participant</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <button onClick={() => generateCodes(1)} style={{ padding: "8px 16px", background: T.orange, border: "none", borderRadius: 6, color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>+ 1 code</button>
-                <button onClick={() => generateCodes(5)} style={{ padding: "8px 16px", background: T.blue, border: "none", borderRadius: 6, color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>+ 5 codes</button>
+            {/* Generator */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "24px", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 16 }}>Générer des codes d'invitation</div>
+              {/* Role selector */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Rôle</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[["participant", "Participant"], ["admin", "Admin"]].map(([val, label]) => (
+                    <button key={val} onClick={() => setNewRole(val)} style={{
+                      padding: "8px 20px", borderRadius: 8, fontSize: 13, fontFamily: "inherit", cursor: "pointer",
+                      background: newRole === val ? (val === "admin" ? T.orange : T.blue) : "transparent",
+                      border: `1.5px solid ${newRole === val ? (val === "admin" ? T.orange : T.blue) : T.border}`,
+                      color: newRole === val ? "#FFFFFF" : T.muted, fontWeight: newRole === val ? 600 : 400,
+                    }}>{label}</button>
+                  ))}
+                </div>
               </div>
+              {/* Email (optional) */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Email du destinataire <span style={{ opacity: 0.6 }}>(optionnel — laisse vide pour un code libre)</span></div>
+                <input value={codeEmail} onChange={e => setCodeEmail(e.target.value)} type="email" placeholder="ex: participant@email.com"
+                  style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }}
+                  onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
+                {codeEmail.trim() && <div style={{ fontSize: 11, color: T.blue, marginTop: 4 }}>⏱ Code lié à cet email, valable 7 jours</div>}
+              </div>
+              {/* Count (random codes only) */}
+              {!codeEmail.trim() && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Nombre de codes</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[1, 3, 5, 10].map(n => (
+                      <button key={n} onClick={() => setCodeCount(n)} style={{
+                        padding: "8px 16px", borderRadius: 8, fontSize: 13, fontFamily: "inherit", cursor: "pointer",
+                        background: codeCount === n ? T.orange : "transparent",
+                        border: `1.5px solid ${codeCount === n ? T.orange : T.border}`,
+                        color: codeCount === n ? "#FFFFFF" : T.muted,
+                      }}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button onClick={generateCodes} style={{ padding: "12px 28px", background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                Générer {codeEmail.trim() ? "le code" : `${codeCount} code${codeCount > 1 ? "s" : ""}`}
+              </button>
+              {codeMsg && <div style={{ marginTop: 12, fontSize: 13, color: codeMsg.startsWith("✓") ? T.green : T.red, fontWeight: 500 }}>{codeMsg}</div>}
             </div>
+            {/* Codes list */}
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr>{["Code", "Rôle", "Créé le", "Utilisé par", "Statut"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}` }}>{h}</th>)}</tr></thead>
-                <tbody>{codes.slice().reverse().map((c, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.border}` }}>
-                    <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, color: c.usedBy ? T.muted : T.orange, fontSize: 15 }}>{c.code}</td>
-                    <td style={{ padding: "12px 14px", color: T.muted }}>{c.role || "participant"}</td>
-                    <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{fmtDate(c.createdAt)}</td>
-                    <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.usedBy || "—"}</td>
-                    <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: c.usedBy ? "rgba(39,174,96,0.1)" : "rgba(232,84,10,0.1)", color: c.usedBy ? T.green : T.orange }}>{c.usedBy ? "Utilisé" : "Disponible"}</span></td>
-                  </tr>
-                ))}</tbody>
+                <thead><tr style={{ background: T.cardBg }}>{["Code", "Rôle", "Destinataire", "Expire", "Statut", "Actions"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+                <tbody>{codes.slice().reverse().map((c, i) => {
+                  const st = codeStatusFn(c);
+                  const stColors = { available: { bg: "rgba(232,84,10,0.1)", color: T.orange, label: "Disponible" }, expired: { bg: "rgba(231,76,60,0.1)", color: T.red, label: "Expiré" }, used: { bg: "rgba(39,174,96,0.1)", color: T.green, label: "Utilisé" } };
+                  const sc = stColors[st];
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border}`, opacity: st === "expired" ? 0.5 : 1 }}>
+                      <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, color: st === "available" ? T.orange : T.muted, fontSize: 15, letterSpacing: "2px" }}>{c.code}</td>
+                      <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: c.role === "admin" ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: c.role === "admin" ? T.orange : T.blue }}>{c.role || "participant"}</span></td>
+                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.forEmail || c.usedBy || "— libre"}</td>
+                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 11 }}>{c.expiresAt ? fmtDate(c.expiresAt) : "∞"}</td>
+                      <td style={{ padding: "12px 14px" }}><span style={{ padding: "3px 10px", borderRadius: 10, fontSize: 11, background: sc.bg, color: sc.color, fontWeight: 500 }}>{sc.label}</span></td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {st === "available" && <>
+                            <button onClick={() => copyCode(c.code)} style={{ padding: "4px 10px", background: copied === c.code ? "rgba(39,174,96,0.15)" : "rgba(74,184,232,0.08)", border: `1px solid ${copied === c.code ? "rgba(39,174,96,0.3)" : "rgba(74,184,232,0.2)"}`, borderRadius: 6, color: copied === c.code ? T.green : T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                              {copied === c.code ? "✓ Copié" : "📋 Copier"}
+                            </button>
+                            {c.forEmail && <button onClick={() => sendCodeEmail(c)} disabled={codeSending === c.code} style={{ padding: "4px 10px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: codeSending === c.code ? 0.5 : 1 }}>
+                              {codeSending === c.code ? "Envoi..." : "📧 Envoyer"}
+                            </button>}
+                          </>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
+              {codes.length === 0 && <div style={{ padding: 32, textAlign: "center", color: T.muted, fontSize: 14 }}>Aucun code créé</div>}
             </div>
           </div>
         )}
@@ -751,7 +842,22 @@ export default function App() {
     setBlocs(chosenBlocs); blocsRef.current = chosenBlocs;
     const b0 = chosenBlocs[0], q0 = b0.questions[0];
     const path = knowsDream ? "5 Pourquoi → Vision → RITE" : "CHA → 5 Pourquoi → Vision → RITE";
-    const intro = `On est ensemble, ${user.name} ! Je suis ${APP_NAME}, ton coach DBR.\n\nTon parcours : **${path}**. Réponds honnêtement — pas parfaitement. Y'a moyen !\n\n---\n\n**BLOC ${b0.id} — ${b0.label}**\n*${b0.desc}*\n\n---\n\n**${q0.title}**\n\n${q0.q}`;
+    const intro = `On est ensemble, ${user.name} ! 🔥 Je suis ${APP_NAME}, ton coach DBR.
+
+Ton parcours : **${path}**.
+
+Chaque question est là pour creuser. Réponds honnêtement, pas parfaitement. Y'a moyen !
+
+---
+
+**BLOC ${b0.id} — ${b0.label}**
+*${b0.desc}*
+
+---
+
+**${q0.title}**
+
+${q0.q}`;
     const m = { role: "assistant", content: intro }; setMsgs([m]);
     const h = [{ role: "assistant", content: intro }]; setApiHist(h); apiHistRef.current = h; setScreen("program");
   }
@@ -765,11 +871,14 @@ export default function App() {
     setShowSynth(false); setScreen(s.phase === "conclusion" ? "conclusion" : "program");
   }
 
-  function handleSend() { const val = input.trim(); if (!val) return; setInput(""); if (taRef.current) taRef.current.style.height = "48px"; if (alreadyAnswered) submitFollowUp(val); else submitAnswer(val); }
+  function handleSend() {
+    if (sp.listening) { const final = sp.stopListen(); const txt = (final || input || "").trim(); setInput(""); if (taRef.current) taRef.current.style.height = "48px"; if (txt) { if (alreadyAnswered) submitFollowUp(txt, true); else submitAnswer(txt, true); } return; }
+    const val = input.trim(); if (!val) return; setInput(""); if (taRef.current) taRef.current.style.height = "48px"; if (alreadyAnswered) submitFollowUp(val); else submitAnswer(val);
+  }
 
   function toggleMic() {
-    if (sp.listening) { const final = sp.stopListen(); if (final && final !== "__MIC_BLOCKED__") setInput(prev => (prev + " " + final).trim()); }
-    else { setMicBlocked(false); sp.startListen(txt => { if (txt === "__MIC_BLOCKED__") { setMicBlocked(true); sp.stopListen(); } else setInput(txt); }); }
+    if (sp.listening) { const final = sp.stopListen(); if (final && final !== "__MIC_BLOCKED__") setInput(final); }
+    else { setMicBlocked(false); setInput(""); sp.startListen(txt => { if (txt === "__MIC_BLOCKED__") { setMicBlocked(true); sp.stopListen(); } else setInput(txt); }); }
   }
 
   function handleSpeak(text, id) { if (sp.speaking && activeSpeakId === id) { sp.stopSpeak(); setActiveSpeakId(null); } else { sp.speak(text, () => setActiveSpeakId(null)); setActiveSpeakId(id); } }
@@ -842,15 +951,37 @@ export default function App() {
                 {user.isAdmin && <button onClick={() => setShowAdmin(true)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>}
                 <button onClick={doSave} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⏸ Pause</button>
                 <button onClick={download} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <div style={{ width: 60, height: 3, background: T.border, borderRadius: 2, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg,${T.orange},${T.blue})`, transition: "width 0.6s" }} /></div>
-                  <span style={{ fontSize: 10, color: T.orange, minWidth: 24 }}>{pct}%</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 90, height: 7, background: T.border, borderRadius: 4, overflow: "hidden", position: "relative" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg,${T.orange},${T.blue})`, borderRadius: 4, transition: "width 0.6s ease", boxShadow: pct > 0 ? "0 0 8px rgba(232,84,10,0.4)" : "none" }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.orange, minWidth: 32 }}>{pct}%</span>
                 </div>
               </div>
             </div>
             {blocs.length > 0 && (
-              <div style={{ display: "flex", overflowX: "auto", gap: 2, paddingBottom: 2 }}>
-                {blocs.map((b, i) => { const done = !!validated[b.id]; const active = i === bi; return <div key={b.id} style={{ padding: "4px 10px", fontSize: 9, fontWeight: 700, letterSpacing: "1px", color: active ? T.orange : done ? "rgba(232,84,10,0.5)" : T.muted, borderBottom: active ? `2px solid ${T.orange}` : "2px solid transparent", whiteSpace: "nowrap", cursor: "default", textTransform: "uppercase", opacity: active || done ? 1 : 0.4 }}>{b.id === "V" ? "VISION" : b.id}{done ? " ✓" : ""}</div>; })}
+              <div style={{ display: "flex", overflowX: "auto", gap: 0, paddingBottom: 6, paddingTop: 2, alignItems: "center" }}>
+                {blocs.map((b, i) => {
+                  const done = !!validated[b.id]; const active = i === bi;
+                  return (
+                    <div key={b.id} style={{ display: "flex", alignItems: "center" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 4px" }}>
+                        <div style={{
+                          width: active ? 22 : 16, height: active ? 22 : 16, borderRadius: "50%",
+                          background: done ? T.green : active ? T.orange : "transparent",
+                          border: `2px solid ${done ? T.green : active ? T.orange : T.border}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 9, color: done || active ? "#fff" : T.muted, fontWeight: 700,
+                          transition: "all 0.3s", boxShadow: active ? "0 0 10px rgba(232,84,10,0.4)" : "none",
+                        }}>{done ? "✓" : ""}</div>
+                        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.5px", marginTop: 2, color: active ? T.orange : done ? T.green : T.muted, opacity: i > bi ? 0.35 : 1, whiteSpace: "nowrap" }}>
+                          {b.id === "V" ? "VIS" : b.id === "5P" ? "5P" : b.id}
+                        </div>
+                      </div>
+                      {i < blocs.length - 1 && <div style={{ width: 14, height: 2, background: done ? T.green : T.border, borderRadius: 1, transition: "background 0.3s" }} />}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -860,8 +991,10 @@ export default function App() {
         <div style={{ flex: 1, maxWidth: 780, width: "100%", margin: "0 auto", padding: "20px 16px 160px" }}>
           {msgs.map((m, i) => <Bubble key={i} id={i} msg={m} onSpeak={handleSpeak} speaking={sp.speaking} activeSpeakId={activeSpeakId} />)}
           {loading && (
-            <div style={{ display: "flex", gap: 5, padding: "14px 48px", alignItems: "center" }}>
-              {[0, 1, 2].map(j => <div key={j} style={{ width: 7, height: 7, borderRadius: "50%", background: j % 2 === 0 ? T.orange : T.blue, animation: `bounce 1.2s ease-in-out ${j * 0.2}s infinite` }} />)}
+            <div style={{ display: "flex", gap: 6, padding: "18px 48px", alignItems: "center" }}>
+              <Logo size={20} />
+              <span style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>{APP_NAME} réfléchit</span>
+              {[0, 1, 2].map(j => <div key={j} style={{ width: 5, height: 5, borderRadius: "50%", background: j % 2 === 0 ? T.orange : T.blue, animation: `bounce 1.2s ease-in-out ${j * 0.2}s infinite` }} />)}
               <style>{`@keyframes bounce{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
             </div>
           )}
@@ -885,14 +1018,15 @@ export default function App() {
                 <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question précédente"
                   style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>←</button>
                 <textarea ref={taRef} value={sp.listening ? sp.liveText : input}
-                  onChange={e => { if (!sp.listening) { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px"; } }}
+                  onClick={() => { if (sp.listening) { const final = sp.stopListen(); setInput(final || sp.liveText || ""); } }}
+                  onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px"; }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); isValidated ? nextQ() : handleSend(); } }}
-                  placeholder={sp.listening ? "Je t'écoute…" : q?.ph || "Écris ta réponse…"}
-                  readOnly={sp.listening} disabled={loading}
+                  placeholder={sp.listening ? "Tape ici pour éditer…" : q?.ph || "Écris ta réponse…"}
+                  readOnly={false} disabled={loading}
                   style={{ flex: 1, padding: "12px 14px", background: T.inputBg, border: `1.5px solid ${T.border}`, borderRadius: 8, fontSize: 15, lineHeight: 1.6, resize: "none", height: 48, minHeight: 48, maxHeight: 140, fontFamily: "inherit", outline: "none", color: T.text, boxSizing: "border-box" }}
                   onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.border} />
                 {sp.hasSR && <button onClick={toggleMic} disabled={loading} style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", background: sp.listening ? T.red : "rgba(74,184,232,0.12)", color: sp.listening ? "#FFFFFF" : T.blue, fontSize: 20 }}>{sp.listening ? "⏹" : "🎤"}</button>}
-                <button onClick={() => { if (isValidated) nextQ(); else if (sp.listening) { const t = sp.stopListen(); if (t) submitAnswer(t, true); } else handleSend(); }}
+                <button onClick={() => { if (isValidated) nextQ(); else handleSend(); }}
                   disabled={loading || (!input.trim() && !isValidated && !sp.listening)}
                   style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", fontSize: 20, background: isValidated ? `linear-gradient(135deg,${T.green},#1e8449)` : (loading || (!input.trim() && !sp.listening)) ? T.cardBg : `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#FFFFFF" }}>
                   {isValidated ? "→" : "↑"}
