@@ -35,6 +35,7 @@ const LS = {
 };
 function genCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 function hashPwd(p) { let h = 5381; for (let i = 0; i < p.length; i++) h = ((h << 5) + h) ^ p.charCodeAt(i); return (h >>> 0).toString(36); }
+function authHeaders() { const t = LS.get("dbr_token"); const h = { "Content-Type": "application/json" }; if (t) h["Authorization"] = "Bearer " + t; return h; }
 function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—"; }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -227,8 +228,18 @@ function useSpeech() {
 // ══════════════════════════════════════════════════════════════════════════
 function Auth({ onLogin }) {
   const T = useContext(ThemeCtx);
-  const [mode, setMode] = useState("login");
+  const [resetToken] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get('reset_token');
+      if (t) { window.history.replaceState({}, '', window.location.pathname); return t; }
+    } catch {}
+    return null;
+  });
+  const [mode, setMode] = useState(resetToken ? "reset-confirm" : "login");
   const [email, setEmail] = useState(""), [pwd, setPwd] = useState(""), [pwd2, setPwd2] = useState(""), [name, setName] = useState(""), [invCode, setInvCode] = useState("");
+  const [newPwd, setNewPwd] = useState(""), [newPwd2, setNewPwd2] = useState("");
+  const [showNewPwd, setShowNewPwd] = useState(false), [showNewPwd2, setShowNewPwd2] = useState(false);
   const [err, setErr] = useState(""), [info, setInfo] = useState("");
   const [showPwd, setShowPwd] = useState(false), [showPwd2, setShowPwd2] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -254,6 +265,7 @@ function Auth({ onLogin }) {
       const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", email, password: pwd }) });
       const data = await res.json();
       if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur de connexion."); }
+      if (data.token) LS.set("dbr_token", data.token);
       LS.set("dbr_current_user", data.user);
       onLogin(data.user);
     } catch { setErr("Erreur réseau. Vérifie ta connexion."); }
@@ -269,6 +281,7 @@ function Auth({ onLogin }) {
       const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "register", email, password: pwd, name, invCode }) });
       const data = await res.json();
       if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur d'inscription."); }
+      if (data.token) LS.set("dbr_token", data.token);
       LS.set("dbr_current_user", data.user);
       onLogin(data.user);
     } catch { setErr("Erreur réseau. Vérifie ta connexion."); }
@@ -282,7 +295,23 @@ function Auth({ onLogin }) {
       const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset", email }) });
       const data = await res.json();
       if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur."); }
-      setInfo(`Mot de passe temporaire : ${data.tempPassword}`); setMode("login");
+      setInfo(data.message || "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.");
+    } catch { setErr("Erreur réseau."); }
+    setBusy(false);
+  }
+
+  async function doResetConfirm() {
+    setErr(""); if (!newPwd) return setErr("Entre un nouveau mot de passe.");
+    if (newPwd.length < 6) return setErr("6 caractères minimum.");
+    if (newPwd !== newPwd2) return setErr("Les mots de passe ne correspondent pas.");
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset-confirm", token: resetToken, newPassword: newPwd }) });
+      const data = await res.json();
+      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur."); }
+      if (data.token) LS.set("dbr_token", data.token);
+      LS.set("dbr_current_user", data.user);
+      onLogin(data.user);
     } catch { setErr("Erreur réseau."); }
     setBusy(false);
   }
@@ -300,19 +329,25 @@ function Auth({ onLogin }) {
         </div>
         <div style={{ background: T.cardBg, border: `1px solid rgba(232,84,10,0.3)`, borderRadius: 16, padding: "32px 24px" }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginBottom: 24, textAlign: "center" }}>
-            {mode === "login" ? "Connexion" : mode === "register" ? "Créer un compte" : "Mot de passe oublié"}
+            {mode === "login" ? "Connexion" : mode === "register" ? "Créer un compte" : mode === "reset-confirm" ? "Nouveau mot de passe" : "Mot de passe oublié"}
           </div>
           {err && <div style={{ background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: T.red }}>⚠ {err}</div>}
           {info && <div style={{ background: "rgba(39,174,96,0.12)", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: T.green }}>✓ {info}</div>}
-          {mode === "register" && inp("Prénom", name, setName)}
-          {inp("Email", email, setEmail, "email")}
-          {mode !== "reset" && pwdField("Mot de passe", pwd, setPwd, showPwd, setShowPwd)}
+          {mode === "reset-confirm" && <>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 16, textAlign: "center", lineHeight: 1.5 }}>Choisis un nouveau mot de passe (6 caractères minimum).</div>
+            {pwdField("Nouveau mot de passe", newPwd, setNewPwd, showNewPwd, setShowNewPwd)}
+            {pwdField("Confirmer le nouveau mot de passe", newPwd2, setNewPwd2, showNewPwd2, setShowNewPwd2)}
+          </>}
+          {mode !== "reset-confirm" && mode === "register" && inp("Prénom", name, setName)}
+          {mode !== "reset-confirm" && inp("Email", email, setEmail, "email")}
+          {mode !== "reset" && mode !== "reset-confirm" && pwdField("Mot de passe", pwd, setPwd, showPwd, setShowPwd)}
           {mode === "register" && pwdField("Confirmer le mot de passe", pwd2, setPwd2, showPwd2, setShowPwd2)}
           {mode === "register" && inp("Code d'invitation", invCode, setInvCode)}
           <div style={{ marginTop: 4 }}>
             {mode === "login" && <button onClick={doLogin} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Connexion..." : "Se connecter"}</button>}
             {mode === "register" && <button onClick={doRegister} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Création..." : "Créer mon compte"}</button>}
-            {mode === "reset" && <button onClick={doReset} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Envoi..." : "Réinitialiser"}</button>}
+            {mode === "reset" && <button onClick={doReset} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Envoi..." : "Envoyer le lien"}</button>}
+            {mode === "reset-confirm" && <button onClick={doResetConfirm} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Enregistrement..." : "Enregistrer le mot de passe"}</button>}
           </div>
           {mode === "login" && <>
             <button onClick={() => { setMode("register"); setErr(""); setInfo(""); }} style={{ background: "none", border: "none", color: T.blue, fontSize: 14, cursor: "pointer", padding: "6px 0", fontFamily: "inherit", display: "block", width: "100%", textAlign: "center", marginBottom: 4 }}>Pas encore de compte ? S'inscrire</button>
@@ -418,8 +453,8 @@ function Admin({ user, onBack }) {
     setAdminLoading(true);
     try {
       const [usersRes, codesRes] = await Promise.all([
-        fetch("/api/admin-users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
-        fetch("/api/codes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", adminEmail: user.email }) })
+        fetch("/api/admin-users", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
+        fetch("/api/codes", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) })
       ]);
       if (usersRes.ok) { const d = await usersRes.json(); setAllUsers(d.users || []); }
       if (codesRes.ok) { const d = await codesRes.json(); setCodes(d.codes || []); }
@@ -442,7 +477,7 @@ function Admin({ user, onBack }) {
   async function generateCodes() {
     try {
       const res = await fetch("/api/codes", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ action: "create", adminEmail: user.email, role: newRole, forEmail: codeEmail, count: codeCount })
       });
       const data = await res.json();
@@ -459,7 +494,7 @@ function Admin({ user, onBack }) {
     if (!window.confirm("Supprimer ce code ?")) return;
     try {
       const res = await fetch("/api/codes", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ action: "delete", adminEmail: user.email, codeId })
       });
       if (res.ok) { setCodeMsg("✓ Code supprimé"); loadData(); }
@@ -477,7 +512,7 @@ function Admin({ user, onBack }) {
     setCodeSending(c.code);
     try {
       const expire = c.expires_at ? `<br><br>Ce code est valable jusqu'au ${new Date(c.expires_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.` : "";
-      const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, subject: `DBR - Code d'invitation accompagnement Méthode CHARITE`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours d'accompagnement avec ton Compagnon ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
+      const res = await fetch("/api/email", { method: "POST", headers: authHeaders(), body: JSON.stringify({ to, subject: `DBR - Code d'invitation accompagnement Méthode CHARITE`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours d'accompagnement avec ton Compagnon ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
       if (res.ok) setCodeMsg(`✓ Code envoyé à ${to}`); else { const d = await res.json(); setCodeMsg(d.error || "Erreur d'envoi."); }
     } catch { setCodeMsg("Erreur réseau."); }
     setCodeSending(null); setTimeout(() => setCodeMsg(""), 4000);
@@ -487,7 +522,7 @@ function Admin({ user, onBack }) {
     if (email === SUPER_ADMIN) return;
     try {
       const res = await fetch("/api/admin-users", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ action: "toggle-admin", adminEmail: user.email, targetEmail: email })
       });
       if (res.ok) loadData();
@@ -499,7 +534,7 @@ function Admin({ user, onBack }) {
     if (!window.confirm(`Supprimer ${email} ?`)) return;
     try {
       const res = await fetch("/api/admin-users", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ action: "remove", adminEmail: user.email, targetEmail: email })
       });
       if (res.ok) loadData();
@@ -528,7 +563,7 @@ function Admin({ user, onBack }) {
     if (!emailTo || !emailSubject || !emailBody) return setEmailStatus("Remplis tous les champs.");
     setEmailStatus("Envoi en cours...");
     try {
-      const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: emailTo, subject: emailSubject, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:560px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:32px;"><div style="text-align:center;margin-bottom:20px;font-size:22px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="font-size:14px;line-height:1.8;color:#AAAAAA;">${emailBody.replace(/\n/g, "<br>")}</div></div></div>` }) });
+      const res = await fetch("/api/email", { method: "POST", headers: authHeaders(), body: JSON.stringify({ to: emailTo, subject: emailSubject, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:560px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:32px;"><div style="text-align:center;margin-bottom:20px;font-size:22px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="font-size:14px;line-height:1.8;color:#AAAAAA;">${emailBody.replace(/\n/g, "<br>")}</div></div></div>` }) });
       if (res.ok) { setEmailStatus("✓ Email envoyé !"); setEmailTo(""); setEmailSubject(""); setEmailBody(""); } else { const d = await res.json(); setEmailStatus(d.error || "Erreur d'envoi."); }
     } catch { setEmailStatus("Erreur réseau."); }
   }
@@ -756,7 +791,7 @@ export default function App() {
   const alreadyAnswered = !!(answerKey && answersRef.current[answerKey]);
 
   function handleLogin(u) { setUser(u); setScreen("intro"); }
-  function handleLogout() { LS.del("dbr_current_user"); setUser(null); setScreen("auth"); setShowAdmin(false); }
+  function handleLogout() { LS.del("dbr_token"); LS.del("dbr_current_user"); setUser(null); setScreen("auth"); setShowAdmin(false); }
 
   function buildSave() { return { msgs, bi, qi, answers: answersRef.current, syntheses, validated, apiHist: apiHistRef.current, blocs: blocsRef.current, blocLabel: blocsRef.current[bi]?.label, qTitle: blocsRef.current[bi]?.questions[qi]?.title, phase: screen, savedAt: Date.now(), totalTime: Math.round((Date.now() - startTime) / 1000) }; }
   function doSave() { if (!user || screen === "auth") return; LS.set(`dbr_sess_${user.email}`, buildSave()); setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); }

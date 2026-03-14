@@ -1,3 +1,5 @@
+import { verifyToken } from './_token.js'
+
 // Validation email basique
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length < 200;
@@ -5,6 +7,10 @@ function isValidEmail(email) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const cronSecret = process.env.CRON_SECRET;
+  const isInternal = cronSecret && req.headers['x-cron-secret'] === cronSecret;
+  if (!isInternal && !verifyToken(req.headers.authorization)) return res.status(401).json({ error: 'Non autorisé' });
 
   const { to, subject, html } = req.body;
   if (!to || !subject || !html) return res.status(400).json({ error: 'Missing fields' });

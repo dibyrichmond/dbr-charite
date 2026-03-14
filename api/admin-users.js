@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { verifyToken } from './_token.js'
 
 const SUPER_ADMIN = 'dibyrichmond@gmail.com';
 
@@ -18,7 +19,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!supabase) return res.status(500).json({ error: 'Base de données non configurée.' });
 
-  const { action, adminEmail } = req.body || {};
+  const auth = verifyToken(req.headers.authorization);
+  if (!auth) return res.status(401).json({ error: 'Session expirée. Reconnecte-toi.' });
+  const adminEmail = auth.email;
+  const { action } = req.body || {};
   if (!await isAdmin(adminEmail)) return res.status(403).json({ error: 'Non autorisé.' });
 
   try {
@@ -57,7 +61,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(400).json({ error: 'Action invalide.' });
-  } catch (err) {
-    return res.status(500).json({ error: 'Erreur serveur: ' + (err.message || 'inconnue') });
+  } catch {
+    return res.status(500).json({ error: 'Erreur serveur.' });
   }
 }

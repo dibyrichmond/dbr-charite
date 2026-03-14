@@ -1,7 +1,12 @@
+import { verifyToken } from './_token.js'
+
 // Proxy Deepgram — retourne la clé temporaire au client
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
-  
+
+  const auth = verifyToken(req.headers.authorization)
+  if (!auth) return res.status(401).json({ error: 'Non autorisé' })
+
   const apiKey = process.env.DEEPGRAM_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'DEEPGRAM_API_KEY not configured' })
 
@@ -17,14 +22,12 @@ export default async function handler(req, res) {
     })
 
     if (!response.ok) {
-      // Fallback : retourner la clé directement (moins sécurisé mais fonctionnel)
-      return res.status(200).json({ key: apiKey, temp: false })
+      return res.status(502).json({ error: 'Erreur Deepgram' })
     }
 
     const data = await response.json()
     return res.status(200).json({ key: data.key, temp: true })
-  } catch (error) {
-    // Fallback sur erreur
-    return res.status(200).json({ key: apiKey, temp: false })
+  } catch {
+    return res.status(500).json({ error: 'Erreur serveur' })
   }
 }
