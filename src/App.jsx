@@ -436,6 +436,7 @@ function Admin({ user, onBack }) {
   const [allUsers, setAllUsers] = useState([]);
   const [codes, setCodes] = useState([]);
   const [adminLoading, setAdminLoading] = useState(true);
+  const [sessionStats, setSessionStats] = useState({ started: 0, completed: 0, details: [] });
   const [newRole, setNewRole] = useState("participant");
   const [codeEmail, setCodeEmail] = useState("");
   const [codeCount, setCodeCount] = useState(1);
@@ -452,12 +453,14 @@ function Admin({ user, onBack }) {
   async function loadData() {
     setAdminLoading(true);
     try {
-      const [usersRes, codesRes] = await Promise.all([
+      const [usersRes, codesRes, statsRes] = await Promise.all([
         fetch("/api/admin-users", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
-        fetch("/api/codes", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) })
+        fetch("/api/codes", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
+        fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "stats" }) })
       ]);
       if (usersRes.ok) { const d = await usersRes.json(); setAllUsers(d.users || []); }
       if (codesRes.ok) { const d = await codesRes.json(); setCodes(d.codes || []); }
+      if (statsRes.ok) { const d = await statsRes.json(); setSessionStats(d); }
     } catch {}
     setAdminLoading(false);
   }
@@ -467,9 +470,8 @@ function Admin({ user, onBack }) {
   const stats = {
     total: allUsers.length,
     admins: allUsers.filter(u => u.is_admin).length,
-    started: allUsers.filter(u => { const s = LS.get(`dbr_sess_${u.email}`); return s && s.msgs?.length > 0; }).length,
-    completed: allUsers.filter(u => { const s = LS.get(`dbr_sess_${u.email}`); return s && s.phase === "conclusion"; }).length,
-    completed: 0,
+    started: sessionStats.started || 0,
+    completed: sessionStats.completed || 0,
     codesUsed: codes.filter(c => c.used_by).length,
     codesAvailable: codes.filter(c => codeStatusFn(c) === "available").length,
   };
@@ -541,8 +543,15 @@ function Admin({ user, onBack }) {
     } catch {}
   }
 
-  function dlTranscript(email) {
-    const sess = LS.get(`dbr_sess_${email}`); if (!sess || !sess.msgs?.length) return alert("Aucun transcript disponible (données locales uniquement).");
+  async function dlTranscript(email) {
+    // Try server first, fallback to localStorage
+    let sess = null;
+    try {
+      const res = await fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "get", targetEmail: email }) });
+      if (res.ok) { const d = await res.json(); if (d.sessions?.length > 0) sess = d.sessions[0]; }
+    } catch {}
+    if (!sess) sess = LS.get(`dbr_sess_${email}`);
+    if (!sess || !sess.msgs?.length) return alert("Aucun transcript disponible pour ce participant.");
     const u = allUsers.find(x => x.email === email);
     const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
     const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
@@ -794,8 +803,9 @@ export default function App() {
   function handleLogout() { LS.del("dbr_token"); LS.del("dbr_current_user"); setUser(null); setScreen("auth"); setShowAdmin(false); }
 
   function buildSave() { return { msgs, bi, qi, answers: answersRef.current, syntheses, validated, apiHist: apiHistRef.current, blocs: blocsRef.current, blocLabel: blocsRef.current[bi]?.label, qTitle: blocsRef.current[bi]?.questions[qi]?.title, phase: screen, savedAt: Date.now(), totalTime: Math.round((Date.now() - startTime) / 1000) }; }
-  function doSave() { if (!user || screen === "auth") return; LS.set(`dbr_sess_${user.email}`, buildSave()); setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); }
-  useEffect(() => { if (screen === "program" && msgs.length > 0) { const t = setTimeout(doSave, 1500); return () => clearTimeout(t); } }, [msgs, screen]);
+  const serverSaveRef = useRef(0);
+  function doSave(alsoServer) { if (!user || screen === "auth") return; const s = buildSave(); LS.set(`dbr_sess_${user.email}`, s); setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); if (alsoServer || Date.now() - serverSaveRef.current > 30000) { serverSaveRef.current = Date.now(); fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "save", session: s }) }).catch(() => {}); } }
+  useEffect(() => { if (screen === "program" && msgs.length > 0) { const t = setTimeout(() => doSave(false), 1500); return () => clearTimeout(t); } }, [msgs, screen]);
 
   async function callClaude(userMsg) {
     const hist = [...apiHistRef.current, { role: "user", content: userMsg }];
@@ -804,7 +814,7 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system: SYSTEM, messages: hist })
     });
-    if (!res.ok) throw new Error("API " + res.status);
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Erreur serveur (" + res.status + ")"); }
     const data = await res.json();
     const text = data.content?.find(b => b.type === "text")?.text || "Erreur.";
     const newH = [...hist, { role: "assistant", content: text }];
@@ -821,7 +831,7 @@ export default function App() {
       const r = await callClaude(`[BLOC ${bloc.id} — ${bloc.label} | ${q.title}]\n\nRéponse :\n"${text}"\n\nAnalyse selon le protocole DBR. IMPORTANT : termine par "✓ Solide." UNIQUEMENT si la réponse est suffisamment précise et profonde. Sinon pose UNE question de précision.`);
       const newA = { ...answersRef.current, [answerKey]: text }; setAnswers(newA); answersRef.current = newA;
       addMsg({ role: "assistant", content: r });
-    } catch { addMsg({ role: "assistant", content: "Une erreur s'est produite. Réessaie." }); }
+    } catch (e) { addMsg({ role: "assistant", content: e.message || "Une erreur s'est produite. Réessaie." }); }
     setLoading(false);
   }
 
@@ -829,7 +839,7 @@ export default function App() {
     if (!text.trim() || loading) return; setLoading(true);
     addMsg({ role: "user", content: text, audio: isAudio });
     try { const r = await callClaude(`[Précision sur ${q?.title}]\n"${text}"\n\nContinue. Si suffisant : "✓ Solide." Sinon : UNE question de précision.`); addMsg({ role: "assistant", content: r }); }
-    catch { addMsg({ role: "assistant", content: "Erreur. Réessaie." }); }
+    catch (e) { addMsg({ role: "assistant", content: e.message || "Erreur. Réessaie." }); }
     setLoading(false);
   }
 
@@ -864,7 +874,7 @@ export default function App() {
       const r = await callClaude(`[SYNTHÈSE BLOC ${bloc.id} — ${bloc.label}]\n\nRéponses :\n${blocAnswers}\n\nSynthèse concise (4-5 phrases). 1 force + 1 vigilance.${bloc.id === "C" ? ' Formule le domino : "Je [verbe] [problème] pour [bénéficiaire] via [format]."' : ""} Termine : "Est-ce que cette synthèse te semble juste ?"`);
       setSyntheses(p => ({ ...p, [bloc.id]: r }));
       addMsg({ role: "assistant", content: `---\n**SYNTHÈSE · ${bloc.label}**\n\n${r}`, synth: true }); setShowSynth(true);
-    } catch { addMsg({ role: "assistant", content: "Erreur lors de la synthèse." }); }
+    } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la synthèse : " + (e.message || "Réessaie.") }); }
     setLoading(false);
   }
 
@@ -902,7 +912,9 @@ export default function App() {
       past.push(session);
       LS.set(`dbr_all_sessions_${user.email}`, past);
       setPastSessions(past);
-    } catch { addMsg({ role: "assistant", content: "Erreur lors de la conclusion." }); }
+      // Save completed session to server
+      fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "save", session }) }).catch(() => {});
+    } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la conclusion : " + (e.message || "Réessaie.") }); }
     setLoading(false);
   }
 
@@ -1030,7 +1042,8 @@ ${q0.q}`;
                 {savedOk && <span style={{ fontSize: 10, color: T.green }}>✓ Sauvé</span>}
                 {themeBtn}
                 {user.isAdmin && <button onClick={() => setShowAdmin(true)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>}
-                <button onClick={doSave} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⏸ Pause</button>
+                <button onClick={() => { doSave(true); setScreen("intro"); }} style={{ padding: "4px 10px", background: "rgba(39,174,96,0.1)", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 6, fontSize: 11, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>🏠 Accueil</button>
+                <button onClick={handleLogout} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, fontSize: 11, color: T.red, cursor: "pointer", fontFamily: "inherit", opacity: 0.8 }}>Déconnexion</button>
                 <button onClick={download} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 90, height: 7, background: T.border, borderRadius: 4, overflow: "hidden", position: "relative" }}>
