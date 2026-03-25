@@ -154,3 +154,28 @@ $$ language plpgsql security definer set search_path = public;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- 10. TABLE BLUEPRINT PARTICIPANT (API /api/participant-profile)
+create table if not exists public.dbr_participant_profiles (
+  email text primary key,
+  dream_root text,
+  discipline_minutes text check (discipline_minutes in ('30', '45', '60')),
+  meeting_time text,
+  fallback_time text,
+  start_date_j1 text,
+  parcours_dbr text check (parcours_dbr in ('CHA', 'RITE')),
+  accompagnement_mode text check (accompagnement_mode in ('REEL', 'B2B', 'DUO')),
+  copilot_name text,
+  copilot_contact text,
+  status text default 'SPRINT' check (status in ('SPRINT', 'ACTIF', 'PAUSE', 'TERMINE')),
+  micro_action_1 text,
+  micro_action_2 text,
+  micro_action_3 text,
+  return_rule text,
+  sprint_notes jsonb default '{}'::jsonb,
+  updated_at bigint default (extract(epoch from now()) * 1000)::bigint,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_dbr_participant_profiles_updated_at
+  on public.dbr_participant_profiles(updated_at desc);
