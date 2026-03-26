@@ -43,6 +43,28 @@ input, textarea, select {
   font-family: inherit;
 }
 
+/* Fix dropdown visibility in both themes */
+select {
+  color: inherit;
+  background-color: inherit;
+}
+select option {
+  background: #1A1A1A;
+  color: #F0F0F0;
+}
+@media (prefers-color-scheme: light) {
+  select option {
+    background: #FFFFFF;
+    color: #1F2937;
+  }
+}
+/* Force option contrast when body is in light mode */
+body[data-theme="light"] select option,
+[data-theme="light"] select option {
+  background: #FFFFFF;
+  color: #1F2937;
+}
+
 input::placeholder, textarea::placeholder {
   color: var(--color-gray);
 }
