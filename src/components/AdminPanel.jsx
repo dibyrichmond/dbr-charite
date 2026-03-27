@@ -392,7 +392,7 @@ export default function Admin({ user, onBack }) {
                       <span>Rêve : <strong style={{ color: T.textDim }}>{p.dream_root ? p.dream_root.slice(0, 60) + (p.dream_root.length > 60 ? "..." : "") : "Non renseigné"}</strong></span>
                       <span>Discipline : {p.discipline_minutes ? `${p.discipline_minutes} min` : "-"}</span>
                       <span>J1 : {p.start_date_j1 || "-"}</span>
-                      <span>💬 {comments.length} commentaire{comments.length !== 1 ? "s" : ""}</span>
+                      <span>💬 {comments.length} échange{comments.length !== 1 ? "s" : ""}</span>
                     </div>
                   </div>
                 );
@@ -435,7 +435,7 @@ export default function Admin({ user, onBack }) {
                   <div style={{ fontSize: 15, fontWeight: 700, color: T.blue, marginBottom: 14 }}>Profil participant</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
                     <div><div style={lbl}>Email</div><div style={val}>{p.email}</div></div>
-                    <div><div style={lbl}>Parcours DBR</div><div style={val}>{p.parcours_dbr || "-"}</div></div>
+                    <div><div style={lbl}>Parcours DBR</div><div style={val}>{p.parcours_dbr === "CHA" ? "CHARITÉ" : p.parcours_dbr || "-"}</div></div>
                     <div>
                       <div style={lbl}>Mode accompagnement</div>
                       <select value={p.accompagnement_mode || ""} onChange={e => adminUpdateField(p.email, { accompagnement_mode: e.target.value })} style={{ padding: "6px 10px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 6, fontSize: 13, color: T.text, fontFamily: "inherit" }}>
@@ -466,23 +466,27 @@ export default function Admin({ user, onBack }) {
                   </div>
                 </div>
 
-                {/* Section 4: Commentaires Admin */}
+                {/* Section 4: Espace d'echange */}
                 <div style={card}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 14 }}>💬 Suivi administrateur</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 14 }}>💬 Espace d'échange</div>
                   <div style={{ marginBottom: 14, display: "grid", gap: 10 }}>
-                    {comments.length === 0 && <div style={{ fontSize: 13, color: T.muted, fontStyle: "italic" }}>Aucun commentaire pour le moment.</div>}
+                    {comments.length === 0 && <div style={{ fontSize: 13, color: T.muted, fontStyle: "italic" }}>Aucun échange pour le moment.</div>}
                     {comments.map(c => {
-                      const authorUser = allUsers.find(u => u.email === c.author);
+                      const isParticipant = c.role === "participant";
+                      const authorUser = allUsers.find(u => u.email === (c.author_name ? undefined : c.author));
+                      const displayName = c.author_name || authorUser?.name || c.author || "Inconnu";
                       return (
-                        <div key={c.id} style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: T.blue }}>{authorUser?.name || c.author}</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(c.created_at)}</span>
-                              <button onClick={(e) => { e.stopPropagation(); deleteBpComment(p.email, c.id); }} style={{ background: "none", border: "none", color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: 0.6 }}>✕</button>
+                        <div key={c.id} style={{ display: "flex", justifyContent: isParticipant ? "flex-end" : "flex-start" }}>
+                          <div style={{ maxWidth: "80%", background: isParticipant ? "rgba(232,84,10,0.08)" : T.cardBg, border: `1px solid ${isParticipant ? "rgba(232,84,10,0.25)" : T.border}`, borderRadius: isParticipant ? "12px 12px 4px 12px" : "12px 12px 12px 4px", padding: "12px 14px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 12 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: isParticipant ? T.orange : T.blue }}>{displayName}{isParticipant ? " (Participant)" : " (Admin)"}</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{fmtDate(c.created_at)}</span>
+                                <button onClick={(e) => { e.stopPropagation(); deleteBpComment(p.email, c.id); }} style={{ background: "none", border: "none", color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: 0.6 }}>✕</button>
+                              </div>
                             </div>
+                            <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.text}</div>
                           </div>
-                          <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.text}</div>
                         </div>
                       );
                     })}
@@ -529,7 +533,7 @@ export default function Admin({ user, onBack }) {
                     <tr key={p.email || i} style={{ borderBottom: `1px solid ${T.border}` }}>
                       <td style={{ padding: "12px 14px", color: T.text, fontWeight: 600 }}>{participant?.name || "-"}</td>
                       <td style={{ padding: "12px 14px", color: T.muted }}>{p.email}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.parcours_dbr || "-"}</td>
+                      <td style={{ padding: "12px 14px", color: T.text }}>{p.parcours_dbr === "CHA" ? "CHARITÉ" : p.parcours_dbr || "-"}</td>
                       <td style={{ padding: "12px 14px", color: T.text }}>{p.discipline_minutes ? `${p.discipline_minutes} min` : "-"}</td>
                       <td style={{ padding: "12px 14px", color: T.text }}>{STATUS_LABEL[p.status] || p.status || "-"}</td>
                       <td style={{ padding: "12px 14px", color: T.text }}>{p.copilot_name || "-"}</td>

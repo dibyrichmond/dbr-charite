@@ -1,8 +1,11 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { ThemeCtx, SPRINT_STEPS, fmtDate, downloadCSV, downloadExcel, profileToRow } from "../shared.js";
 
-export default function BlueprintScreen({ user, profile, onChange, onSave, onBack, saving, saveMsg, onClearMsg }) {
+export default function BlueprintScreen({ user, profile, onChange, onSave, onBack, saving, saveMsg, onClearMsg, onComment }) {
   const T = useContext(ThemeCtx);
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyMsg, setReplyMsg] = useState("");
 
   const update = (field, value) => onChange({ ...profile, [field]: value, updated_at: Date.now() });
   const updateSprint = (key, value) => onChange({ ...profile, sprint_notes: { ...(profile.sprint_notes || {}), [key]: value }, updated_at: Date.now() });
@@ -26,8 +29,10 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
   const selectStyle = { ...input, appearance: "auto", WebkitAppearance: "menulist" };
   const optStyle = { background: T.card, color: T.text };
 
+  const isDark = T.bg === "#0D0D0D";
+
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text }}>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, colorScheme: isDark ? "dark" : "light" }}>
       <div style={{ background: T.card, borderBottom: `2px solid ${T.orange}`, padding: "12px 18px" }}>
         <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div>
@@ -115,7 +120,7 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
           <div style={sectionTitle}><span style={sectionNum}>5</span>Profil participant</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
             <div><div style={label}>Date de début J1</div><input type="date" value={profile.start_date_j1 || ""} onChange={(e) => update("start_date_j1", e.target.value)} style={input} /></div>
-            <div><div style={label}>Parcours DBR</div><select value={profile.parcours_dbr || ""} onChange={(e) => update("parcours_dbr", e.target.value)} style={selectStyle}><option value="" style={optStyle}>Choisir</option><option value="CHA" style={optStyle}>CHA</option><option value="RITE" style={optStyle}>RITE</option></select></div>
+            <div><div style={label}>Parcours DBR</div><select value={profile.parcours_dbr || ""} onChange={(e) => update("parcours_dbr", e.target.value)} style={selectStyle}><option value="" style={optStyle}>Choisir</option><option value="CHA" style={optStyle}>CHARITÉ</option><option value="RITE" style={optStyle}>RITE</option></select></div>
             <div><div style={label}>Mode d'accompagnement</div><select value={profile.accompagnement_mode || ""} onChange={(e) => update("accompagnement_mode", e.target.value)} style={selectStyle}><option value="" style={optStyle}>Choisir</option><option value="REEL" style={optStyle}>Réel</option><option value="B2B" style={optStyle}>B2B</option><option value="DUO" style={optStyle}>Duo (Réel + B2B)</option></select></div>
             <div><div style={label}>Statut</div><select value={profile.status || "SPRINT"} onChange={(e) => update("status", e.target.value)} style={selectStyle}><option value="SPRINT" style={optStyle}>Sprint</option><option value="ACTIF" style={optStyle}>Actif</option><option value="PAUSE" style={optStyle}>Pause</option><option value="TERMINE" style={optStyle}>Terminé</option></select></div>
             <div><div style={label}>Nom et prénom du Co-Pilote (fin de Aligner)</div><input value={profile.copilot_name || ""} onChange={(e) => update("copilot_name", e.target.value)} style={input} /></div>
@@ -143,23 +148,47 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
           </div>
         )}
 
-        {/* Admin comments visible to participant */}
-        {Array.isArray(profile.admin_comments) && profile.admin_comments.length > 0 && (
-          <div style={card}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 12 }}>💬 Commentaires de l'administration</div>
-            <div style={{ display: "grid", gap: 10 }}>
-              {profile.admin_comments.map(c => (
-                <div key={c.id} style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: T.blue }}>{c.author}</span>
-                    <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(c.created_at)}</span>
+        {/* Espace d'echange admin-participant */}
+        <div style={card}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 12 }}>💬 Espace d'échange</div>
+          <div style={{ fontSize: 12, color: T.muted, marginBottom: 14 }}>Historique des échanges avec l'administration concernant votre parcours.</div>
+          <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+            {(!Array.isArray(profile.admin_comments) || profile.admin_comments.length === 0) && (
+              <div style={{ fontSize: 13, color: T.muted, fontStyle: "italic", textAlign: "center", padding: 16 }}>Aucun échange pour le moment. Envoyez un message pour démarrer la conversation.</div>
+            )}
+            {Array.isArray(profile.admin_comments) && profile.admin_comments.map(c => {
+              const isParticipant = c.role === "participant";
+              const displayName = c.author_name || c.author || "Inconnu";
+              return (
+                <div key={c.id} style={{ display: "flex", justifyContent: isParticipant ? "flex-end" : "flex-start" }}>
+                  <div style={{ maxWidth: "80%", background: isParticipant ? "rgba(232,84,10,0.08)" : T.cardBg, border: `1px solid ${isParticipant ? "rgba(232,84,10,0.25)" : T.border}`, borderRadius: isParticipant ? "12px 12px 4px 12px" : "12px 12px 12px 4px", padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, gap: 12 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: isParticipant ? T.orange : T.blue }}>{displayName}{isParticipant ? "" : " (Admin)"}</span>
+                      <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{fmtDate(c.created_at)}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.text}</div>
                   </div>
-                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.text}</div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        )}
+          {onComment && (
+            <div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <textarea value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Écrire un message..." rows={2} style={{ flex: 1, padding: "10px 12px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 13, color: T.text, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                <button onClick={async () => {
+                  if (!replyText.trim() || replySending) return;
+                  setReplySending(true); setReplyMsg("");
+                  const result = await onComment(replyText.trim());
+                  if (result?.success) { setReplyText(""); setReplyMsg("✓ Message envoyé"); }
+                  else { setReplyMsg(result?.error || "Erreur."); }
+                  setReplySending(false); setTimeout(() => setReplyMsg(""), 3000);
+                }} disabled={!replyText.trim() || replySending} style={{ padding: "10px 18px", background: replyText.trim() ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 600, cursor: replyText.trim() ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: replyText.trim() ? 1 : 0.5, alignSelf: "flex-end" }}>{replySending ? "..." : "Envoyer"}</button>
+              </div>
+              {replyMsg && <div style={{ marginTop: 8, fontSize: 12, color: replyMsg.startsWith("✓") ? T.green : T.red, fontWeight: 500 }}>{replyMsg}</div>}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

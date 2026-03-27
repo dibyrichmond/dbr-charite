@@ -127,6 +127,13 @@ async function handler(req, res) {
       const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim().slice(0, 2000) : '';
       if (!targetEmail || !comment) return res.status(400).json({ error: 'Email et commentaire requis.' });
 
+      // Get admin name
+      const { data: adminUser } = await supabase
+        .from('dbr_users')
+        .select('name')
+        .eq('email', auth.email)
+        .maybeSingle();
+
       // Get current profile to append comment
       const { data: profile } = await supabase
         .from('dbr_participant_profiles')
@@ -135,13 +142,46 @@ async function handler(req, res) {
         .maybeSingle();
 
       const existing = Array.isArray(profile?.admin_comments) ? profile.admin_comments : [];
-      const newComment = { id: Date.now(), author: auth.email, text: comment, created_at: Date.now() };
+      const newComment = { id: Date.now(), author: auth.email, author_name: adminUser?.name || auth.email, role: 'admin', text: comment, created_at: Date.now() };
       const updated = [...existing, newComment];
 
       const { error } = await supabase
         .from('dbr_participant_profiles')
         .update({ admin_comments: updated, updated_at: Date.now() })
         .eq('email', targetEmail);
+
+      if (error) return res.status(500).json({ error: 'Erreur ajout commentaire.' });
+      return res.status(200).json({ success: true, comments: updated });
+    }
+
+    // Participant: add a reply/comment on their own blueprint
+    if (action === 'participant-comment') {
+      const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim().slice(0, 2000) : '';
+      if (!comment) return res.status(400).json({ error: 'Commentaire requis.' });
+
+      // Get participant name
+      const { data: pUser } = await supabase
+        .from('dbr_users')
+        .select('name')
+        .eq('email', auth.email)
+        .maybeSingle();
+
+      const { data: profile } = await supabase
+        .from('dbr_participant_profiles')
+        .select('admin_comments')
+        .eq('email', auth.email)
+        .maybeSingle();
+
+      if (!profile) return res.status(404).json({ error: 'Profil introuvable. Sauvegardez d\'abord votre Blueprint.' });
+
+      const existing = Array.isArray(profile.admin_comments) ? profile.admin_comments : [];
+      const newComment = { id: Date.now(), author: auth.email, author_name: pUser?.name || auth.email, role: 'participant', text: comment, created_at: Date.now() };
+      const updated = [...existing, newComment];
+
+      const { error } = await supabase
+        .from('dbr_participant_profiles')
+        .update({ admin_comments: updated, updated_at: Date.now() })
+        .eq('email', auth.email);
 
       if (error) return res.status(500).json({ error: 'Erreur ajout commentaire.' });
       return res.status(200).json({ success: true, comments: updated });

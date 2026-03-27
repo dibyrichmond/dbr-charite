@@ -138,6 +138,24 @@ export default function App() {
     setBlueprintSaving(false);
   }
 
+  async function addBlueprintComment(text) {
+    try {
+      const res = await fetch("/api/participant-profile", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ action: "participant-comment", comment: text })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.comments) {
+        setBlueprint(prev => ({ ...prev, admin_comments: d.comments }));
+        return { success: true };
+      }
+      return { error: d.error || "Erreur." };
+    } catch {
+      return { error: "Erreur réseau." };
+    }
+  }
+
   function buildSave() { return { msgs, bi, qi, answers: answersRef.current, syntheses, validated, apiHist: apiHistRef.current, blocs: blocsRef.current, blocLabel: blocsRef.current[bi]?.label, qTitle: blocsRef.current[bi]?.questions[qi]?.title, phase: screen, savedAt: Date.now(), totalTime: Math.round((Date.now() - startTime) / 1000) }; }
   const serverSaveRef = useRef(0);
   function doSave(alsoServer) { if (!user || screen === "auth") return; const s = buildSave(); LS.set(`dbr_sess_${user.email}`, s); setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); if (alsoServer || Date.now() - serverSaveRef.current > 30000) { serverSaveRef.current = Date.now(); fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "save", session: s }) }).catch(() => {}); } }
@@ -373,6 +391,7 @@ ${q0.q}`;
           saving={blueprintSaving}
           saveMsg={blueprintSaveMsg}
           onClearMsg={() => setBlueprintSaveMsg("")}
+          onComment={addBlueprintComment}
         />
       </ThemeCtx.Provider>
     );
