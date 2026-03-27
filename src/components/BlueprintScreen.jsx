@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { ThemeCtx, SPRINT_STEPS, downloadCSV, downloadExcel, profileToRow } from "../shared.js";
+import { ThemeCtx, SPRINT_STEPS, fmtDate, downloadCSV, downloadExcel, profileToRow } from "../shared.js";
 
 export default function BlueprintScreen({ user, profile, onChange, onSave, onBack, saving, saveMsg }) {
   const T = useContext(ThemeCtx);
@@ -118,6 +118,39 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
             <div><div style={label}>Contact du Co-Pilote</div><input value={profile.copilot_contact || ""} onChange={(e) => update("copilot_contact", e.target.value)} style={input} placeholder="Téléphone" /></div>
           </div>
         </div>
+
+        {/* Admin validation banner */}
+        {profile.admin_validated && (
+          <div style={{ ...card, borderColor: "rgba(39,174,96,0.4)", background: "rgba(39,174,96,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 22 }}>✅</span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.green }}>Blueprint validé par l'administration</div>
+                <div style={{ fontSize: 12, color: T.muted }}>
+                  {profile.admin_validated_at ? `Validé le ${fmtDate(profile.admin_validated_at)}` : "Validé"}{profile.program_90_started ? " · Programme 90 jours lancé" : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Admin comments visible to participant */}
+        {Array.isArray(profile.admin_comments) && profile.admin_comments.length > 0 && (
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 12 }}>💬 Commentaires de l'administration</div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {profile.admin_comments.map(c => (
+                <div key={c.id} style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: T.blue }}>{c.author}</span>
+                    <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(c.created_at)}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.text}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

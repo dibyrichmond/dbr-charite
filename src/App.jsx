@@ -412,9 +412,9 @@ ${q0.q}`;
         </div>
       </ThemeCtx.Provider>
     );
-    return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onKnow={() => startPath(true)} onDontKnow={() => startPath(false)} onLogout={handleLogout} /></ThemeCtx.Provider>;
+    return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onKnow={() => startPath(true)} onDontKnow={() => startPath(false)} onLogout={handleLogout} onBlueprint={() => openBlueprint("intro")} /></ThemeCtx.Provider>;
   }
-  if (screen === "aiguillage") return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onKnow={() => startPath(true)} onDontKnow={() => startPath(false)} onLogout={handleLogout} /></ThemeCtx.Provider>;
+  if (screen === "aiguillage") return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onKnow={() => startPath(true)} onDontKnow={() => startPath(false)} onLogout={handleLogout} onBlueprint={() => openBlueprint("aiguillage")} /></ThemeCtx.Provider>;
 
   // PROGRAM + CONCLUSION
   return (

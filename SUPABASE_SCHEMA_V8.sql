@@ -65,7 +65,12 @@ create table if not exists public.dbr_participant_profiles (
   status text default 'SPRINT',
   return_rule text,
   sprint_notes jsonb default '{}',
-  updated_at bigint
+  updated_at bigint,
+  admin_comments jsonb default '[]',
+  admin_validated boolean default false,
+  admin_validated_at bigint,
+  admin_validated_by text,
+  program_90_started boolean default false
 );
 
 -- 5. TABLE RATE LIMITING

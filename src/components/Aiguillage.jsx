@@ -2,7 +2,7 @@ import { useState, useContext } from "react";
 import { ThemeCtx, APP_NAME } from "../shared.js";
 import Logo from "./Logo.jsx";
 
-export default function Aiguillage({ user, onKnow, onDontKnow, onLogout }) {
+export default function Aiguillage({ user, onKnow, onDontKnow, onLogout, onBlueprint }) {
   const T = useContext(ThemeCtx);
   const [choice, setChoice] = useState(null);
   return (
@@ -28,6 +28,7 @@ export default function Aiguillage({ user, onKnow, onDontKnow, onLogout }) {
             </button>
           </div>
           {choice && <button onClick={() => choice === "know" ? onKnow() : onDontKnow()} style={{ width: "100%", padding: "15px", marginTop: 24, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", fontFamily: "inherit" }}>Commencer le parcours →</button>}
+          {onBlueprint && <button onClick={onBlueprint} style={{ width: "100%", marginTop: 10, padding: 11, background: "rgba(74,184,232,0.08)", border: `1px solid rgba(74,184,232,0.2)`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>📘 Mon Blueprint 90 jours</button>}
           <button onClick={onLogout} style={{ width: "100%", marginTop: 12, background: "none", border: "none", fontSize: 12, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Se déconnecter</button>
         </div>
       </div>

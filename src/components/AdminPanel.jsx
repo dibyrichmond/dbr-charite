@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from "react";
-import { ThemeCtx, SUPER_ADMIN, APP_NAME, LS, authHeaders, fmtDate, STATUS_LABEL, profileToRow, downloadCSV, downloadExcel } from "../shared.js";
+import { ThemeCtx, SUPER_ADMIN, APP_NAME, LS, authHeaders, fmtDate, STATUS_LABEL, SPRINT_STEPS, profileToRow, downloadCSV, downloadExcel } from "../shared.js";
 import Logo from "./Logo.jsx";
 
 export default function Admin({ user, onBack }) {
@@ -18,6 +18,11 @@ export default function Admin({ user, onBack }) {
   const [codeMsg, setCodeMsg] = useState("");
   const [emailTo, setEmailTo] = useState(""), [emailSubject, setEmailSubject] = useState(""), [emailBody, setEmailBody] = useState("");
   const [emailStatus, setEmailStatus] = useState("");
+  // Blueprint management state
+  const [bpView, setBpView] = useState(null); // selected profile email for detail view
+  const [bpComment, setBpComment] = useState("");
+  const [bpSending, setBpSending] = useState(false);
+  const [bpMsg, setBpMsg] = useState("");
 
   const WEEK = 7 * 24 * 3600 * 1000;
   const isExpired = (c) => c.expires_at && Date.now() > c.expires_at;
@@ -164,6 +169,48 @@ export default function Admin({ user, onBack }) {
     } catch { setEmailStatus("Erreur réseau."); }
   }
 
+  // Blueprint management functions
+  async function addBpComment(email) {
+    if (!bpComment.trim() || bpSending) return;
+    setBpSending(true); setBpMsg("");
+    try {
+      const res = await fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "admin-comment", targetEmail: email, comment: bpComment }) });
+      const d = await res.json();
+      if (res.ok) {
+        setProfiles(p => p.map(x => x.email === email ? { ...x, admin_comments: d.comments } : x));
+        setBpComment(""); setBpMsg("✓ Commentaire ajouté");
+      } else { setBpMsg(d.error || "Erreur."); }
+    } catch { setBpMsg("Erreur réseau."); }
+    setBpSending(false); setTimeout(() => setBpMsg(""), 2500);
+  }
+
+  async function deleteBpComment(email, commentId) {
+    try {
+      const res = await fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "admin-delete-comment", targetEmail: email, commentId }) });
+      const d = await res.json();
+      if (res.ok) { setProfiles(p => p.map(x => x.email === email ? { ...x, admin_comments: d.comments } : x)); }
+    } catch {}
+  }
+
+  async function toggleBpValidation(email, currentlyValidated) {
+    setBpSending(true); setBpMsg("");
+    try {
+      const res = await fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "admin-validate", targetEmail: email, validated: !currentlyValidated }) });
+      if (res.ok) {
+        setProfiles(p => p.map(x => x.email === email ? { ...x, admin_validated: !currentlyValidated, admin_validated_at: !currentlyValidated ? Date.now() : null, admin_validated_by: !currentlyValidated ? user.email : null, program_90_started: !currentlyValidated } : x));
+        setBpMsg(!currentlyValidated ? "✓ Blueprint validé, programme 90 jours lancé !" : "Validation retirée.");
+      }
+    } catch { setBpMsg("Erreur réseau."); }
+    setBpSending(false); setTimeout(() => setBpMsg(""), 3000);
+  }
+
+  async function adminUpdateField(email, updates) {
+    try {
+      const res = await fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "admin-update", targetEmail: email, updates }) });
+      if (res.ok) { setProfiles(p => p.map(x => x.email === email ? { ...x, ...updates } : x)); }
+    } catch {}
+  }
+
   const tabBtn = (id, label) => <button onClick={() => setTab(id)} style={{ padding: "8px 16px", background: tab === id ? T.orange : "transparent", border: `1px solid ${tab === id ? T.orange : T.border}`, borderRadius: 6, color: tab === id ? "#FFFFFF" : T.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{label}</button>;
   const statCard = (label, val, color) => (
     <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "18px 20px", borderTop: `3px solid ${color}`, flex: "1 1 140px", minWidth: 140 }}>
@@ -197,6 +244,7 @@ export default function Admin({ user, onBack }) {
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
           {tabBtn("users", "👥 Participants")}
+          {tabBtn("suivi", "📋 Suivi Blueprint")}
           {tabBtn("profiles", "📘 Blueprint")}
           {tabBtn("codes", "🔑 Invitations")}
           {tabBtn("email", "📧 Email")}
@@ -318,6 +366,157 @@ export default function Admin({ user, onBack }) {
             </div>
           </div>
         )}
+
+        {tab === "suivi" && !bpView && (
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 16 }}>Suivi Blueprints participants</div>
+            <div style={{ display: "grid", gap: 12 }}>
+              {profiles.length === 0 && <div style={{ padding: 32, textAlign: "center", color: T.muted }}>Aucun Blueprint enregistré.</div>}
+              {profiles.map((p) => {
+                const participant = allUsers.find(u => u.email === p.email);
+                const comments = Array.isArray(p.admin_comments) ? p.admin_comments : [];
+                return (
+                  <div key={p.email} style={{ background: T.card, border: `1px solid ${p.admin_validated ? "rgba(39,174,96,0.5)" : T.border}`, borderRadius: 12, padding: "18px 20px", cursor: "pointer", transition: "border-color 0.2s" }} onClick={() => setBpView(p.email)}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{participant?.name || p.email}</div>
+                        <div style={{ fontSize: 12, color: T.muted }}>{p.email}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        {p.admin_validated && <span style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "rgba(39,174,96,0.15)", color: T.green }}>✓ Validé</span>}
+                        {p.program_90_started && <span style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: "rgba(232,84,10,0.12)", color: T.orange }}>90 jours lancé</span>}
+                        <span style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, background: "rgba(74,184,232,0.1)", color: T.blue }}>{STATUS_LABEL[p.status] || p.status || "Sprint"}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, color: T.muted, flexWrap: "wrap" }}>
+                      <span>Rêve : <strong style={{ color: T.textDim }}>{p.dream_root ? p.dream_root.slice(0, 60) + (p.dream_root.length > 60 ? "..." : "") : "Non renseigné"}</strong></span>
+                      <span>Discipline : {p.discipline_minutes ? `${p.discipline_minutes} min` : "-"}</span>
+                      <span>J1 : {p.start_date_j1 || "-"}</span>
+                      <span>💬 {comments.length} commentaire{comments.length !== 1 ? "s" : ""}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {tab === "suivi" && bpView && (() => {
+          const p = profiles.find(x => x.email === bpView);
+          if (!p) return <div style={{ color: T.muted, padding: 20 }}>Profil introuvable. <button onClick={() => setBpView(null)} style={{ color: T.blue, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Retour</button></div>;
+          const participant = allUsers.find(u => u.email === p.email);
+          const comments = Array.isArray(p.admin_comments) ? p.admin_comments : [];
+          const card = { background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "20px 18px" };
+          const lbl = { fontSize: 12, color: T.muted, marginBottom: 2, fontWeight: 600 };
+          const val = { fontSize: 14, color: T.text, marginBottom: 10 };
+          return (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+                <button onClick={() => { setBpView(null); setBpComment(""); setBpMsg(""); }} style={{ padding: "6px 14px", background: "none", border: `1px solid ${T.border}`, borderRadius: 6, color: T.muted, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>← Liste</button>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{participant?.name || p.email}</div>
+                {p.admin_validated && <span style={{ padding: "4px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "rgba(39,174,96,0.15)", color: T.green }}>✓ Validé</span>}
+              </div>
+
+              <div style={{ display: "grid", gap: 14 }}>
+                {/* Section 1: Identité & Engagement */}
+                <div style={card}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 14 }}>Identité & Engagement</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
+                    <div><div style={lbl}>Rêve racine</div><div style={val}>{p.dream_root || <em style={{ color: T.muted }}>Non renseigné</em>}</div></div>
+                    <div><div style={lbl}>Discipline quotidienne</div><div style={val}>{p.discipline_minutes ? `${p.discipline_minutes} min` : "-"}</div></div>
+                    <div><div style={lbl}>Heure de rendez-vous</div><div style={val}>{p.meeting_time || "-"}</div></div>
+                    <div><div style={lbl}>2e heure RDV</div><div style={val}>{p.fallback_time || "-"}</div></div>
+                    <div><div style={lbl}>Règle de retour</div><div style={val}>{p.return_rule || "-"}</div></div>
+                  </div>
+                </div>
+
+                {/* Section 2: Profil */}
+                <div style={card}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.blue, marginBottom: 14 }}>Profil participant</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12 }}>
+                    <div><div style={lbl}>Email</div><div style={val}>{p.email}</div></div>
+                    <div><div style={lbl}>Parcours DBR</div><div style={val}>{p.parcours_dbr || "-"}</div></div>
+                    <div>
+                      <div style={lbl}>Mode accompagnement</div>
+                      <select value={p.accompagnement_mode || ""} onChange={e => adminUpdateField(p.email, { accompagnement_mode: e.target.value })} style={{ padding: "6px 10px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 6, fontSize: 13, color: T.text, fontFamily: "inherit" }}>
+                        <option value="">Non défini</option><option value="REEL">Réel</option><option value="B2B">B2B</option><option value="DUO">Duo</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style={lbl}>Statut</div>
+                      <select value={p.status || "SPRINT"} onChange={e => adminUpdateField(p.email, { status: e.target.value })} style={{ padding: "6px 10px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 6, fontSize: 13, color: T.text, fontFamily: "inherit" }}>
+                        <option value="SPRINT">Sprint</option><option value="ACTIF">Actif</option><option value="PAUSE">Pause</option><option value="TERMINE">Terminé</option>
+                      </select>
+                    </div>
+                    <div><div style={lbl}>Date début J1</div><div style={val}>{p.start_date_j1 || "-"}</div></div>
+                    <div><div style={lbl}>Co-Pilote</div><div style={val}>{p.copilot_name || "-"}{p.copilot_contact ? ` (${p.copilot_contact})` : ""}</div></div>
+                  </div>
+                </div>
+
+                {/* Section 3: Sprint J1-J7 */}
+                <div style={card}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#8E44AD", marginBottom: 14 }}>Sprint J1 → J7</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {SPRINT_STEPS.map(step => (
+                      <div key={step} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: T.muted, minWidth: 50 }}>{step}</span>
+                        <span style={{ fontSize: 13, color: T.text }}>{p.sprint_notes?.[step] || <em style={{ color: T.muted }}>Aucune note</em>}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 4: Commentaires Admin */}
+                <div style={card}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 14 }}>💬 Suivi administrateur</div>
+                  <div style={{ marginBottom: 14, display: "grid", gap: 10 }}>
+                    {comments.length === 0 && <div style={{ fontSize: 13, color: T.muted, fontStyle: "italic" }}>Aucun commentaire pour le moment.</div>}
+                    {comments.map(c => {
+                      const authorUser = allUsers.find(u => u.email === c.author);
+                      return (
+                        <div key={c.id} style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: T.blue }}>{authorUser?.name || c.author}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(c.created_at)}</span>
+                              <button onClick={(e) => { e.stopPropagation(); deleteBpComment(p.email, c.id); }} style={{ background: "none", border: "none", color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: 0.6 }}>✕</button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{c.text}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <textarea value={bpComment} onChange={e => setBpComment(e.target.value)} placeholder="Ajouter un commentaire de suivi..." rows={2} style={{ flex: 1, padding: "10px 12px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 13, color: T.text, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                    <button onClick={() => addBpComment(p.email)} disabled={!bpComment.trim() || bpSending} style={{ padding: "10px 18px", background: bpComment.trim() ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 600, cursor: bpComment.trim() ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: bpComment.trim() ? 1 : 0.5, alignSelf: "flex-end" }}>Envoyer</button>
+                  </div>
+                  {bpMsg && <div style={{ marginTop: 8, fontSize: 12, color: bpMsg.startsWith("✓") ? T.green : T.red, fontWeight: 500 }}>{bpMsg}</div>}
+                </div>
+
+                {/* Section 5: Validation */}
+                <div style={{ ...card, borderColor: p.admin_validated ? "rgba(39,174,96,0.4)" : "rgba(232,84,10,0.3)" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: p.admin_validated ? T.green : T.orange, marginBottom: 10 }}>
+                    {p.admin_validated ? "✓ Blueprint validé" : "Validation du Blueprint"}
+                  </div>
+                  {p.admin_validated && (
+                    <div style={{ fontSize: 12, color: T.muted, marginBottom: 12 }}>
+                      Validé le {fmtDate(p.admin_validated_at)} par {allUsers.find(u => u.email === p.admin_validated_by)?.name || p.admin_validated_by || "admin"}. Programme 90 jours lancé.
+                    </div>
+                  )}
+                  {!p.admin_validated && (
+                    <div style={{ fontSize: 13, color: T.muted, marginBottom: 12, lineHeight: 1.6 }}>
+                      Valider ce Blueprint lancera officiellement le programme de 90 jours pour ce participant. Le participant verra cette validation sur son Blueprint.
+                    </div>
+                  )}
+                  <button onClick={() => toggleBpValidation(p.email, p.admin_validated)} disabled={bpSending} style={{ padding: "12px 24px", background: p.admin_validated ? "rgba(231,76,60,0.1)" : `linear-gradient(135deg,${T.green},#1e8449)`, border: p.admin_validated ? `1px solid rgba(231,76,60,0.3)` : "none", borderRadius: 8, color: p.admin_validated ? T.red : "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 14 }}>
+                    {p.admin_validated ? "Retirer la validation" : "✓ Valider et lancer le programme 90 jours"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {tab === "profiles" && (
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
