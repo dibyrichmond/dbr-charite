@@ -271,7 +271,7 @@ export default function App() {
     setLoading(true); setScreen("conclusion");
     const summary = blocsRef.current.map(b => { const ba = Object.entries(answersRef.current).filter(([k]) => k.startsWith(b.id + "_")).map(([, v]) => v.slice(0, 300)).join(" / "); const bs = syntheses[b.id] ? syntheses[b.id].slice(0, 200) : ""; return `BLOC ${b.id} (${b.label}):\n${ba}\nSynthèse: ${bs}`; }).join("\n\n");
     try {
-      const r = await callClaude(`[CONCLUSION FINALE — MÉTHODE CHARITÉ — Compagnon ${APP_NAME}]\n\n${summary}\n\nGénère une conclusion puissante :\n1. La conclusion choisie (1 à 4) et pourquoi\n2. La formule du rêve racine\n3. Le programme adapté (plan 90j en 3 phases 30/30/30 avec jalons concrets en FCFA)\n4. Message personnel ancré dans le contexte ivoirien\n\nProse fluide, 350 mots max. Commence par "CONCLUSION [N] : [titre]".`);
+      const r = await callClaude(`[CONCLUSION FINALE — Compagnon ${APP_NAME}]\n\n${summary}\n\nC'est le moment le plus important du parcours. Convoque les 3 moments de vérité les plus forts de ce parcours. Relie-les en une image cohérente. Utilise les mots exacts que le participant a prononcés, pas tes propres mots. Nomme ce qu'il porte maintenant qu'il ne portait pas en entrant.\n\nTermine par une phrase qui appartient uniquement à ce participant. Pas une formule. Quelque chose de vrai, de spécifique, d'inoubliable.\n\nProse fluide. Dis ce qui est juste. Pas plus. Pas moins.`);
       addMsg({ role: "assistant", content: r, conc: true });
       // Save to multi-sessions
       const session = buildSave();
