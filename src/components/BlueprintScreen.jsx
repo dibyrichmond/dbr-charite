@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { ThemeCtx, SPRINT_STEPS, fmtDate, downloadCSV, downloadExcel, profileToRow } from "../shared.js";
 
-export default function BlueprintScreen({ user, profile, onChange, onSave, onBack, saving, saveMsg }) {
+export default function BlueprintScreen({ user, profile, onChange, onSave, onBack, saving, saveMsg, onClearMsg }) {
   const T = useContext(ThemeCtx);
 
   const update = (field, value) => onChange({ ...profile, [field]: value, updated_at: Date.now() });
@@ -36,7 +36,6 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
             <div style={{ fontSize: 12, color: T.muted }}>Moteur opérationnel J1-J90, rempli pendant le parcours.</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onSave} disabled={saving} style={{ padding: "10px 16px", background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1 }}>{saving ? "Sauvegarde..." : "Sauvegarder"}</button>
             <button onClick={() => downloadCSV(`DBR_Blueprint_${(user?.name || "participant").replace(/\s+/g, "_")}.csv`, [profileToRow(profile)])} style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>CSV</button>
             <button onClick={() => downloadExcel(`DBR_Blueprint_${(user?.name || "participant").replace(/\s+/g, "_")}.xls`, [profileToRow(profile)])} style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.orange, cursor: "pointer", fontFamily: "inherit" }}>Excel</button>
             <button onClick={onBack} style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Retour</button>
@@ -45,7 +44,12 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
       </div>
 
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px 14px 40px", display: "grid", gap: 14 }}>
-        {!!saveMsg && <div style={{ ...card, borderColor: saveMsg.startsWith("✓") ? "rgba(39,174,96,0.4)" : "rgba(231,76,60,0.4)", color: saveMsg.startsWith("✓") ? T.green : T.red }}>{saveMsg}</div>}
+        {!!saveMsg && (
+          <div style={{ ...card, borderColor: saveMsg.startsWith("✓") ? "rgba(39,174,96,0.4)" : "rgba(231,76,60,0.4)", color: saveMsg.startsWith("✓") ? T.green : T.red, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ flex: 1, lineHeight: 1.5 }}>{saveMsg}</div>
+            <button onClick={onClearMsg} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", fontSize: 16, fontFamily: "inherit", padding: "0 4px", flexShrink: 0 }}>✕</button>
+          </div>
+        )}
         {missing.length > 0 && <div style={{ ...card, borderColor: "rgba(232,84,10,0.35)" }}><strong style={{ color: T.orange }}>Points manquants :</strong> <span style={{ color: T.muted }}>{missing.join(" · ")}</span></div>}
 
         <div style={card}>
@@ -117,6 +121,11 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
             <div><div style={label}>Nom et prénom du Co-Pilote (fin de Aligner)</div><input value={profile.copilot_name || ""} onChange={(e) => update("copilot_name", e.target.value)} style={input} /></div>
             <div><div style={label}>Contact du Co-Pilote</div><input value={profile.copilot_contact || ""} onChange={(e) => update("copilot_contact", e.target.value)} style={input} placeholder="Téléphone" /></div>
           </div>
+        </div>
+
+        {/* Save button at bottom */}
+        <div style={{ ...card, textAlign: "center" }}>
+          <button onClick={onSave} disabled={saving} style={{ padding: "14px 40px", background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 10, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1, minWidth: 220 }}>{saving ? "Sauvegarde en cours..." : "💾 Sauvegarder mon Blueprint"}</button>
         </div>
 
         {/* Admin validation banner */}

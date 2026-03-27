@@ -136,7 +136,6 @@ export default function App() {
       setBlueprintSaveMsg("Erreur réseau pendant la sauvegarde.");
     }
     setBlueprintSaving(false);
-    setTimeout(() => setBlueprintSaveMsg(""), 2600);
   }
 
   function buildSave() { return { msgs, bi, qi, answers: answersRef.current, syntheses, validated, apiHist: apiHistRef.current, blocs: blocsRef.current, blocLabel: blocsRef.current[bi]?.label, qTitle: blocsRef.current[bi]?.questions[qi]?.title, phase: screen, savedAt: Date.now(), totalTime: Math.round((Date.now() - startTime) / 1000) }; }
@@ -373,6 +372,7 @@ ${q0.q}`;
           onBack={() => setScreen(blueprintReturn || "intro")}
           saving={blueprintSaving}
           saveMsg={blueprintSaveMsg}
+          onClearMsg={() => setBlueprintSaveMsg("")}
         />
       </ThemeCtx.Provider>
     );

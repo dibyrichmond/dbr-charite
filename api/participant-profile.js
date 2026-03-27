@@ -67,9 +67,6 @@ function sanitizePayload(payload) {
     copilot_name: cleanText(p.copilot_name, 300),
     copilot_contact: cleanPhone(p.copilot_contact),
     status: cleanChoice(String(p.status || ''), STATUT_VALUES),
-    micro_action_1: cleanText(p.micro_action_1, 500),
-    micro_action_2: cleanText(p.micro_action_2, 500),
-    micro_action_3: cleanText(p.micro_action_3, 500),
     return_rule: cleanText(p.return_rule, 1000),
     sprint_notes: typeof p.sprint_notes === 'object' && p.sprint_notes ? p.sprint_notes : {},
     updated_at: Date.now(),
@@ -108,7 +105,7 @@ async function handler(req, res) {
         .from('dbr_participant_profiles')
         .upsert(row, { onConflict: 'email' });
 
-      if (error) return res.status(500).json({ error: 'Erreur sauvegarde profil.' });
+      if (error) return res.status(500).json({ error: 'Erreur sauvegarde profil : ' + (error.message || error.code || 'erreur inconnue') });
       return res.status(200).json({ success: true });
     }
 
