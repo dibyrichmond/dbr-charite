@@ -37,7 +37,7 @@ export function genCode() { return Math.random().toString(36).slice(2, 8).toUppe
 export function authHeaders() { const t = LS.get("dbr_token"); const h = { "Content-Type": "application/json" }; if (t) h["Authorization"] = "Bearer " + t; return h; }
 export function isTokenExpired() { try { const t = LS.get("dbr_token"); if (!t) return true; const payload = JSON.parse(atob(t.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))); return !payload.exp || Date.now() > payload.exp; } catch { return true; } }
 export function tokenExpiresIn() { try { const t = LS.get("dbr_token"); if (!t) return 0; const payload = JSON.parse(atob(t.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))); return Math.max(0, (payload.exp || 0) - Date.now()); } catch { return 0; } }
-export function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—"; }
+export function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "-"; }
 
 export const STATUS_LABEL = { SPRINT: "Sprint", ACTIF: "Actif", PAUSE: "Pause", TERMINE: "Terminé" };
 export const SPRINT_STEPS = ["J1", "J2-J3", "J4", "J5-J6", "J7"];

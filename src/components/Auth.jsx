@@ -101,7 +101,7 @@ export default function Auth({ onLogin }) {
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><Logo size={90} /></div>
           <div style={{ fontSize: 24, fontWeight: 900, color: T.orange, letterSpacing: "6px" }}>DBR</div>
           <div style={{ fontSize: 12, color: T.blue, letterSpacing: "4px", fontWeight: 600, marginTop: 4 }}>MÉTHODE CHARITÉ</div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Compagnon {APP_NAME} — Dreams Become Reality</div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Compagnon {APP_NAME} · Dreams Become Reality</div>
         </div>
         <div style={{ background: T.cardBg, border: `1px solid rgba(232,84,10,0.3)`, borderRadius: 16, padding: "32px 24px" }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginBottom: 24, textAlign: "center" }}>

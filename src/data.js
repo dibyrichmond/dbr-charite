@@ -1,30 +1,30 @@
 // ══════════════════════════════════════════════════════════════════════════
-// DONNÉES — BLOCS CHARITÉ & PROMPT SYSTÈME
+// DONNÉES · BLOCS CHARITÉ & PROMPT SYSTÈME
 // ══════════════════════════════════════════════════════════════════════════
 
 export const BLOCS_CHA = [
   {
     id: "C", label: "CLARIFIER", desc: "Identifier le rêve racine", questions: [
-      { id: "C1", title: "Tes moments de flow", q: "Donne-moi 2 à 3 moments des 30 derniers jours où tu as complètement oublié le temps. Pour chacun : qu'est-ce que tu faisais exactement, combien de temps ça a duré, qu'as-tu produit, et est-ce que quelqu'un t'a sollicité pour ça ?", hint: "Ce que tu fais quand personne ne te demande — c'est là que vit ton rêve.", ph: "Ex : Samedi dernier, j'ai aidé un ami à structurer son business plan de 14h à 18h sans voir le temps passer..." },
+      { id: "C1", title: "Tes moments de flow", q: "Donne-moi 2 à 3 moments des 30 derniers jours où tu as complètement oublié le temps. Pour chacun : qu'est-ce que tu faisais exactement, combien de temps ça a duré, qu'as-tu produit, et est-ce que quelqu'un t'a sollicité pour ça ?", hint: "Ce que tu fais quand personne ne te demande, c'est là que vit ton rêve.", ph: "Ex : Samedi dernier, j'ai aidé un ami à structurer son business plan de 14h à 18h sans voir le temps passer..." },
       { id: "C2", title: "Les problèmes qui t'attirent", q: "Quels problèmes complexes t'attirent naturellement, même sans être payé ? Qui dans ton entourage vient te voir pour ce type de problème ? Donne un exemple concret récent.", hint: "Cherche ce qui te nourrit sans récompense.", ph: "Ex : Les gens viennent me voir quand ils sont perdus dans leurs projets..." },
     ]
   },
   {
     id: "H", label: "HONORER", desc: "Accepter le coût réel du rêve", questions: [
       { id: "H1", title: "Le prix concret", q: "Ce rêve a un prix. Sois précis : combien d'heures par semaine tu t'engages à y consacrer, pendant combien de mois ? Qu'est-ce que tu es prêt à mettre en pause ? Nomme quelque chose de concret que tu arrêtes.", hint: "Un rêve sans coût accepté reste un caprice.", ph: "Ex : 3 soirées par semaine pendant 6 mois. J'arrête les matchs du weekend..." },
-      { id: "H2", title: "Tes peurs et obstacles", q: "Si ce rêve réussit totalement dans 2 ans — tu es visible, reconnu à Abidjan et au-delà — qu'est-ce qui te fait peur dans ce succès ? Qui pourrait freiner ce projet ? Et quelle est la peur que tu ne dis jamais à voix haute ?", hint: "Les peurs de réussir sabotent plus souvent que les peurs d'échouer.", ph: "Ex : Peur que ma famille pense que je les oublie..." },
+      { id: "H2", title: "Tes peurs et obstacles", q: "Si ce rêve réussit totalement dans 2 ans, tu es visible, reconnu à Abidjan et au-delà, qu'est-ce qui te fait peur dans ce succès ? Qui pourrait freiner ce projet ? Et quelle est la peur que tu ne dis jamais à voix haute ?", hint: "Les peurs de réussir sabotent plus souvent que les peurs d'échouer.", ph: "Ex : Peur que ma famille pense que je les oublie..." },
     ]
   },
   {
     id: "A", label: "ALIGNER", desc: "Libérer l'énergie gaspillée", questions: [
-      { id: "A1", title: "Cohérence & Identité", q: "Mesure l'écart entre ce que tu dis vouloir et ce que tu fais vraiment — en heures par semaine ou en FCFA par mois. Quelle contradiction te coûte le plus d'énergie ? Et qui dois-tu devenir pour que ce rêve soit normal dans ta vie ?", hint: "L'incohérence n'est pas un jugement — c'est une mesure.", ph: "Ex : Je dis que c'est ma priorité mais j'y consacre 0h depuis 3 semaines..." },
+      { id: "A1", title: "Cohérence & Identité", q: "Mesure l'écart entre ce que tu dis vouloir et ce que tu fais vraiment, en heures par semaine ou en FCFA par mois. Quelle contradiction te coûte le plus d'énergie ? Et qui dois-tu devenir pour que ce rêve soit normal dans ta vie ?", hint: "L'incohérence n'est pas un jugement, c'est une mesure.", ph: "Ex : Je dis que c'est ma priorité mais j'y consacre 0h depuis 3 semaines..." },
     ]
   },
 ];
 
 export const BLOC_5P = {
   id: "5P", label: "5 POURQUOI", desc: "Vérifier la profondeur du rêve", questions: [
-    { id: "5P1", title: "Ton rêve en une phrase", q: "Formule ton rêve en une phrase claire et concrète. Pas d'idéal flou — une direction précise. Je vais ensuite te poser la question « Pourquoi » 5 fois pour m'assurer qu'on travaille sur le vrai problème.", hint: "Dis ce qui vient naturellement. On va creuser ensemble.", ph: "Ex : Je veux créer une agence de communication digitale à Abidjan..." },
+    { id: "5P1", title: "Ton rêve en une phrase", q: "Formule ton rêve en une phrase claire et concrète. Pas d'idéal flou, une direction précise. Je vais ensuite te poser la question « Pourquoi » 5 fois pour m'assurer qu'on travaille sur le vrai problème.", hint: "Dis ce qui vient naturellement. On va creuser ensemble.", ph: "Ex : Je veux créer une agence de communication digitale à Abidjan..." },
   ]
 };
 
@@ -38,12 +38,12 @@ export const BLOC_VISION = {
 export const BLOCS_RITE = [
   {
     id: "R", label: "RENONCER", desc: "Choisir crée la puissance", questions: [
-      { id: "R1", title: "Priorité unique & Garde-fous", q: "Quelle est LA seule priorité des 90 prochains jours ? Nomme ce qui passe en pause avec une date précise. Quelle est ta règle d'arrêt ? Et qui sait que c'est ta priorité — quelqu'un qui peut te demander des comptes ?", hint: "Renoncer explicitement est plus puissant qu'ajouter.", ph: "Ex : Priorité : 3 premiers clients avant le 1er avril..." },
+      { id: "R1", title: "Priorité unique & Garde-fous", q: "Quelle est LA seule priorité des 90 prochains jours ? Nomme ce qui passe en pause avec une date précise. Quelle est ta règle d'arrêt ? Et qui sait que c'est ta priorité, quelqu'un qui peut te demander des comptes ?", hint: "Renoncer explicitement est plus puissant qu'ajouter.", ph: "Ex : Priorité : 3 premiers clients avant le 1er avril..." },
     ]
   },
   {
     id: "I", label: "INSTALLER", desc: "Un système simple qui tient", questions: [
-      { id: "I1", title: "Rituel ancré", q: "Quel rituel de 30 à 45 minutes maximum installes-tu — avec un déclencheur précis (après quoi, à quelle heure) ? Que produis-tu pendant ce temps ? Et quelle est ta règle si ce créneau saute un jour ?", hint: "Complexité = abandon. Simplicité = durabilité.", ph: "Ex : Chaque matin après le café, 30 min sur le projet..." },
+      { id: "I1", title: "Rituel ancré", q: "Quel rituel de 30 à 45 minutes maximum installes-tu, avec un déclencheur précis (après quoi, à quelle heure) ? Que produis-tu pendant ce temps ? Et quelle est ta règle si ce créneau saute un jour ?", hint: "Complexité = abandon. Simplicité = durabilité.", ph: "Ex : Chaque matin après le café, 30 min sur le projet..." },
     ]
   },
   {

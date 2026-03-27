@@ -1,7 +1,7 @@
 import { verifyToken } from './_token.js'
 import { cors } from './_cors.js'
 
-// Proxy Deepgram — retourne la clé temporaire au client
+// Proxy Deepgram - retourne la clé temporaire au client
 async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 

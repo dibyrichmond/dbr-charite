@@ -33,7 +33,7 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
           <div>
             <div style={{ fontSize: 11, color: T.blue, letterSpacing: "2px", marginBottom: 4 }}>MÉTHODE CHARITÉ</div>
             <div style={{ fontSize: 20, fontWeight: 800 }}>Blueprint 90 jours</div>
-            <div style={{ fontSize: 12, color: T.muted }}>Moteur opérationnel J1-J90 — rempli pendant le parcours.</div>
+            <div style={{ fontSize: 12, color: T.muted }}>Moteur opérationnel J1-J90, rempli pendant le parcours.</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={onSave} disabled={saving} style={{ padding: "10px 16px", background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1 }}>{saving ? "Sauvegarde..." : "Sauvegarder"}</button>

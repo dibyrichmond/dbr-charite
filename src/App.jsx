@@ -83,7 +83,7 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [screen, msgs.length]);
 
-  // Check token expiry — warn 30min before and auto-logout when expired
+  // Check token expiry - warn 30min before and auto-logout when expired
   const [tokenWarning, setTokenWarning] = useState(false);
   useEffect(() => {
     if (!user) return;
@@ -172,7 +172,7 @@ export default function App() {
     setLoading(true);
     addMsg({ role: "user", content: text, audio: isAudio });
     try {
-      const r = await callClaude(`[BLOC ${bloc.id} — ${bloc.label} | ${q.title}]\n\nRéponse :\n"${text}"\n\nAnalyse selon le protocole DBR. IMPORTANT : termine par "✓ Solide." UNIQUEMENT si la réponse est suffisamment précise et profonde. Sinon pose UNE question de précision.`);
+      const r = await callClaude(`[BLOC ${bloc.id} · ${bloc.label} | ${q.title}]\n\nRéponse :\n"${text}"\n\nAnalyse selon le protocole DBR. IMPORTANT : termine par "✓ Solide." UNIQUEMENT si la réponse est suffisamment précise et profonde. Sinon pose UNE question de précision.`);
       const newA = { ...answersRef.current, [answerKey]: text }; setAnswers(newA); answersRef.current = newA;
       if (answerKey === "5P_5P1") {
         setBlueprint((p) => ({ ...p, dream_root: p.dream_root || text.trim() }));
@@ -207,7 +207,7 @@ export default function App() {
     const prevKey = `${pBloc.id}_${pQ.id}`, prevAnswer = answersRef.current[prevKey] || "";
     setInput(prevAnswer);
     if (pbi !== bi) setValidated(p => { const n = { ...p }; delete n[pBloc.id]; return n; });
-    const note = `**← Retour : ${pQ.title}**\n\n${pQ.q}${prevAnswer ? "\n\n*Ta réponse précédente est pré-remplie — modifie-la librement.*" : ""}`;
+    const note = `**← Retour : ${pQ.title}**\n\n${pQ.q}${prevAnswer ? "\n\n*Ta réponse précédente est pré-remplie, modifie-la librement.*" : ""}`;
     const m = { role: "assistant", content: note };
     setMsgs(p => [...p, { role: "user", content: "← Retour." }, m]);
     setApiHist(p => { const n = [...p, { role: "user", content: "← Retour." }, { role: "assistant", content: note }]; apiHistRef.current = n; return n; });
@@ -229,7 +229,7 @@ export default function App() {
     if (nbi !== null && nbi < blocs.length) {
       setBi(nbi); setQi(0);
       const nb = blocs[nbi], nq = nb.questions[0];
-      const intro = `---\n**BLOC ${nb.id} — ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
+      const intro = `---\n**BLOC ${nb.id} · ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
       addMsg({ role: "assistant", content: intro });
       setApiHist(p => { const n = [...p, { role: "assistant", content: intro }]; apiHistRef.current = n; return n; });
     } else if (nbi !== null) { await genConclusion(); }
@@ -239,7 +239,7 @@ export default function App() {
     setLoading(true);
     const blocAnswers = Object.entries(answersRef.current).filter(([k]) => k.startsWith(bloc.id + "_")).map(([, v]) => v.slice(0, 400)).join("\n\n---\n\n");
     try {
-      const r = await callClaude(`[SYNTHÈSE BLOC ${bloc.id} — ${bloc.label}]\n\nRéponses :\n${blocAnswers}\n\nSynthèse concise (4-5 phrases). 1 force + 1 vigilance.${bloc.id === "C" ? ' Formule le domino : "Je [verbe] [problème] pour [bénéficiaire] via [format]."' : ""} Termine : "Est-ce que cette synthèse te semble juste ?"`);
+      const r = await callClaude(`[SYNTHÈSE BLOC ${bloc.id} · ${bloc.label}]\n\nRéponses :\n${blocAnswers}\n\nSynthèse concise (4-5 phrases). 1 force + 1 vigilance.${bloc.id === "C" ? ' Formule le domino : "Je [verbe] [problème] pour [bénéficiaire] via [format]."' : ""} Termine : "Est-ce que cette synthèse te semble juste ?"`);
       setSyntheses(p => ({ ...p, [bloc.id]: r }));
       addMsg({ role: "assistant", content: `---\n**SYNTHÈSE · ${bloc.label}**\n\n${r}`, synth: true }); setShowSynth(true);
     } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la synthèse : " + (e.message || "Réessaie.") }); }
@@ -256,7 +256,7 @@ export default function App() {
       const nbi = bi + 1;
       if (nbi < blocs.length) {
         setBi(nbi); setQi(0); const nb = blocs[nbi], nq = nb.questions[0];
-        const intro = `---\n**BLOC ${nb.id} — ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
+        const intro = `---\n**BLOC ${nb.id} · ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
         addMsg({ role: "assistant", content: intro });
         setApiHist(p => { const n = [...p, { role: "assistant", content: intro }]; apiHistRef.current = n; return n; });
       } else { await genConclusion(); }
@@ -271,7 +271,7 @@ export default function App() {
     setLoading(true); setScreen("conclusion");
     const summary = blocsRef.current.map(b => { const ba = Object.entries(answersRef.current).filter(([k]) => k.startsWith(b.id + "_")).map(([, v]) => v.slice(0, 300)).join(" / "); const bs = syntheses[b.id] ? syntheses[b.id].slice(0, 200) : ""; return `BLOC ${b.id} (${b.label}):\n${ba}\nSynthèse: ${bs}`; }).join("\n\n");
     try {
-      const r = await callClaude(`[CONCLUSION FINALE — Compagnon ${APP_NAME}]\n\n${summary}\n\nC'est le moment le plus important du parcours. Convoque les 3 moments de vérité les plus forts de ce parcours. Relie-les en une image cohérente. Utilise les mots exacts que le participant a prononcés, pas tes propres mots. Nomme ce qu'il porte maintenant qu'il ne portait pas en entrant.\n\nTermine par une phrase qui appartient uniquement à ce participant. Pas une formule. Quelque chose de vrai, de spécifique, d'inoubliable.\n\nProse fluide. Dis ce qui est juste. Pas plus. Pas moins.`);
+      const r = await callClaude(`[CONCLUSION FINALE · Compagnon ${APP_NAME}]\n\n${summary}\n\nC'est le moment le plus important du parcours. Convoque les 3 moments de vérité les plus forts de ce parcours. Relie-les en une image cohérente. Utilise les mots exacts que le participant a prononcés, pas tes propres mots. Nomme ce qu'il porte maintenant qu'il ne portait pas en entrant.\n\nTermine par une phrase qui appartient uniquement à ce participant. Pas une formule. Quelque chose de vrai, de spécifique, d'inoubliable.\n\nProse fluide. Dis ce qui est juste. Pas plus. Pas moins.`);
       addMsg({ role: "assistant", content: r, conc: true });
       // Save to multi-sessions
       const session = buildSave();
@@ -290,8 +290,8 @@ export default function App() {
 
   function download() {
     try {
-      const lines = msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-      const full = `PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"═".repeat(50)}\n\n${lines}`;
+      const lines = msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `Réel, Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
+      const full = `PARCOURS DBR · MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"═".repeat(50)}\n\n${lines}`;
       const blob = new Blob([full], { type: "text/plain;charset=utf-8" });
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${APP_NAME}_${user.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.txt` });
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -314,7 +314,7 @@ Chaque question est là pour creuser. Réponds honnêtement, pas parfaitement. Y
 
 ---
 
-**BLOC ${b0.id} — ${b0.label}**
+**BLOC ${b0.id} · ${b0.label}**
 *${b0.desc}*
 
 ---
@@ -392,7 +392,7 @@ ${q0.q}`;
             <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "32px 24px" }}>
               <div style={{ fontSize: 17, fontWeight: 600, color: T.text, marginBottom: 6 }}>Parcours en cours</div>
               <div style={{ fontSize: 13, color: T.muted, marginBottom: 24, lineHeight: 1.7 }}>
-                Dernier arrêt · {savedSession.blocLabel} — {savedSession.qTitle}<br />
+                Dernier arrêt · {savedSession.blocLabel} · {savedSession.qTitle}<br />
                 {savedSession.savedAt && new Date(savedSession.savedAt).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
               </div>
               <button onClick={() => resumeSession(savedSession)} style={{ width: "100%", padding: 15, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" }}>Reprendre où j'en étais →</button>
@@ -401,7 +401,7 @@ ${q0.q}`;
               <button onClick={() => openBlueprint("intro")} style={{ width: "100%", marginTop: 8, padding: 11, background: "rgba(74,184,232,0.08)", border: `1px solid rgba(74,184,232,0.2)`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>📘 Mon Blueprint 90 jours</button>
               {showHistory && pastSessions.map((s, i) => (
                 <div key={i} onClick={() => resumeSession(s)} style={{ marginTop: 8, padding: "12px 16px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, cursor: "pointer", fontSize: 13, color: T.textDim }}>
-                  <strong style={{ color: T.text }}>{s.blocLabel}</strong> — {s.qTitle}<br />
+                  <strong style={{ color: T.text }}>{s.blocLabel}</strong> · {s.qTitle}<br />
                   <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(s.savedAt)} · {s.phase === "conclusion" ? "✓ Complété" : "En cours"}</span>
                 </div>
               ))}
@@ -537,7 +537,7 @@ ${q0.q}`;
                   {isValidated ? "→" : "↑"}
                 </button>
               </div>
-              {isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME} — ajoute une précision ou clique → pour continuer</div>}
+              {isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME}, ajoute une précision ou clique → pour continuer</div>}
             </div>
           </div>
         )}
@@ -547,7 +547,7 @@ ${q0.q}`;
           <div style={{ position: "fixed", bottom: 72, left: 0, right: 0, zIndex: 60, padding: "0 16px" }}>
             <div style={{ maxWidth: 780, margin: "0 auto", background: T.card, border: `2px solid ${T.orange}`, borderRadius: 14, padding: "16px 18px", boxShadow: `0 -8px 32px ${T.shadow}` }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>📅 Date de début J1</div>
-              <div style={{ fontSize: 13, color: T.muted, marginBottom: 10 }}>Fixe ta date de démarrage officielle — le premier jour de ton sprint de 7 jours.</div>
+              <div style={{ fontSize: 13, color: T.muted, marginBottom: 10 }}>Fixe ta date de démarrage officielle, le premier jour de ton sprint de 7 jours.</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input type="date" value={j1DateInput} onChange={e => setJ1DateInput(e.target.value)} style={{ flex: 1, padding: "10px 12px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, outline: "none", fontFamily: "inherit" }} />
                 <button onClick={() => { if (!j1DateInput) return; const upd = { ...blueprint, start_date_j1: j1DateInput, updated_at: Date.now() }; setBlueprint(upd); setShowJ1Prompt(false); setJ1DateInput(""); fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "upsert", profile: { ...upd, email: user.email } }) }).catch(() => {}); }} disabled={!j1DateInput} style={{ padding: "10px 20px", background: j1DateInput ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: j1DateInput ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: j1DateInput ? 1 : 0.5 }}>Enregistrer J1</button>

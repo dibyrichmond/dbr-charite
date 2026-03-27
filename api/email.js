@@ -30,7 +30,7 @@ async function handler(req, res) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: process.env.RESEND_FROM_EMAIL || 'Réel — Compagnon DBR <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM_EMAIL || 'Réel, Compagnon DBR <onboarding@resend.dev>',
         to: Array.isArray(to) ? to : [to],
         subject,
         html,

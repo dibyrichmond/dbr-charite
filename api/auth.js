@@ -20,7 +20,7 @@ async function handler(req, res) {
   const { action, email, password, name, invCode } = req.body || {};
   const em = typeof email === 'string' ? email.toLowerCase().trim() : '';
 
-  // reset-confirm uses token, not email — skip email validation for it
+  // reset-confirm uses token, not email - skip email validation for it
   if (action !== 'reset-confirm') {
     if (!em || !isValidEmail(em)) return res.status(400).json({ error: 'Email invalide.' });
   }
@@ -81,7 +81,7 @@ async function handler(req, res) {
       });
     }
 
-    // ── RESET PASSWORD — send email link ──
+    // ── RESET PASSWORD - send email link ──
     if (action === 'reset') {
       // Always return same message to not reveal if account exists
       const successMsg = 'Si un compte existe avec cet email, un lien de réinitialisation a été envoyé. Vérifie ta boîte de réception (et tes spams).';
@@ -101,9 +101,9 @@ async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
           body: JSON.stringify({
-            from: 'Réel — Compagnon DBR <onboarding@resend.dev>',
+            from: 'Réel, Compagnon DBR <onboarding@resend.dev>',
             to: [em],
-            subject: 'Réinitialisation de ton mot de passe — DBR Méthode CHARITÉ',
+            subject: 'Réinitialisation de ton mot de passe · DBR Méthode CHARITÉ',
             html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;background:#0D0D0D;color:#F0F0F0;border-radius:12px;">
               <div style="text-align:center;margin-bottom:20px;">
                 <span style="font-size:28px;font-weight:900;color:#E8540A;letter-spacing:4px;">DBR</span>
@@ -122,7 +122,7 @@ async function handler(req, res) {
       return res.status(200).json({ message: successMsg });
     }
 
-    // ── RESET CONFIRM — set new password from token ──
+    // ── RESET CONFIRM - set new password from token ──
     if (action === 'reset-confirm') {
       const { token: resetToken, newPassword } = req.body || {};
       if (!resetToken || typeof resetToken !== 'string') return res.status(400).json({ error: 'Token manquant.' });

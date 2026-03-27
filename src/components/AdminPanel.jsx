@@ -128,8 +128,8 @@ export default function Admin({ user, onBack }) {
     if (!sess) sess = LS.get(`dbr_sess_${email}`);
     if (!sess || !sess.msgs?.length) return alert("Aucun transcript disponible pour ce participant.");
     const u = allUsers.find(x => x.email === email);
-    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-    const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
+    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Réel, Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
+    const blob = new Blob([`PARCOURS DBR · MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${(u?.name || email).replace(/\s+/g, "_")}.txt` });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
@@ -178,7 +178,7 @@ export default function Admin({ user, onBack }) {
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Logo size={28} />
-            <span style={{ fontWeight: 700, color: T.text }}>Console Admin — {APP_NAME}</span>
+            <span style={{ fontWeight: 700, color: T.text }}>Console Admin · {APP_NAME}</span>
           </div>
           <button onClick={onBack} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "6px 14px", color: T.muted, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>← Retour</button>
         </div>
@@ -244,7 +244,7 @@ export default function Admin({ user, onBack }) {
                 </div>
               </div>
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Email du destinataire <span style={{ opacity: 0.6 }}>(optionnel — laisse vide pour un code libre)</span></div>
+                <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Email du destinataire <span style={{ opacity: 0.6 }}>(optionnel, laisse vide pour un code libre)</span></div>
                 <input value={codeEmail} onChange={e => setCodeEmail(e.target.value)} type="email" placeholder="ex: participant@email.com"
                   style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }}
                   onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
@@ -281,7 +281,7 @@ export default function Admin({ user, onBack }) {
                     <tr key={c.id || i} style={{ borderBottom: `1px solid ${T.border}`, opacity: st === "expired" ? 0.5 : 1 }}>
                       <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, color: st === "available" ? T.orange : T.muted, fontSize: 15, letterSpacing: "2px" }}>{c.code}</td>
                       <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: c.role === "admin" ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: c.role === "admin" ? T.orange : T.blue }}>{c.role || "participant"}</span></td>
-                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.for_email || c.used_by || "— libre"}</td>
+                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.for_email || c.used_by || "- libre"}</td>
                       <td style={{ padding: "12px 14px", color: T.muted, fontSize: 11 }}>{c.expires_at ? fmtDate(c.expires_at) : "∞"}</td>
                       <td style={{ padding: "12px 14px" }}><span style={{ padding: "3px 10px", borderRadius: 10, fontSize: 11, background: sc.bg, color: sc.color, fontWeight: 500 }}>{sc.label}</span></td>
                       <td style={{ padding: "12px 14px" }}>
@@ -328,12 +328,12 @@ export default function Admin({ user, onBack }) {
                   const participant = allUsers.find((u) => u.email === p.email);
                   return (
                     <tr key={p.email || i} style={{ borderBottom: `1px solid ${T.border}` }}>
-                      <td style={{ padding: "12px 14px", color: T.text, fontWeight: 600 }}>{participant?.name || "—"}</td>
+                      <td style={{ padding: "12px 14px", color: T.text, fontWeight: 600 }}>{participant?.name || "-"}</td>
                       <td style={{ padding: "12px 14px", color: T.muted }}>{p.email}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.parcours_dbr || "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.discipline_minutes ? `${p.discipline_minutes} min` : "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{STATUS_LABEL[p.status] || p.status || "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.copilot_name || "—"}</td>
+                      <td style={{ padding: "12px 14px", color: T.text }}>{p.parcours_dbr || "-"}</td>
+                      <td style={{ padding: "12px 14px", color: T.text }}>{p.discipline_minutes ? `${p.discipline_minutes} min` : "-"}</td>
+                      <td style={{ padding: "12px 14px", color: T.text }}>{STATUS_LABEL[p.status] || p.status || "-"}</td>
+                      <td style={{ padding: "12px 14px", color: T.text }}>{p.copilot_name || "-"}</td>
                       <td style={{ padding: "12px 14px", color: T.muted }}>{fmtDate(p.updated_at)}</td>
                     </tr>
                   );
