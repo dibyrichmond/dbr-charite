@@ -1,7 +1,8 @@
 import { verifyToken } from './_token.js'
+import { cors } from './_cors.js'
 
 // Proxy Deepgram — retourne la clé temporaire au client
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const auth = verifyToken(req.headers.authorization)
@@ -31,3 +32,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Erreur serveur' })
   }
 }
+
+export default cors(handler);

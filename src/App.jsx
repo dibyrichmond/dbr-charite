@@ -1,1008 +1,15 @@
-import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+﻿import { useState, useEffect, useRef, useContext } from "react";
+import { THEMES, ThemeCtx, APP_NAME, LS, authHeaders, isTokenExpired, tokenExpiresIn, fmtDate, emptyBlueprint } from "./shared.js";
+import { BLOCS_CHA, BLOC_5P, BLOC_VISION, BLOCS_RITE, SYSTEM } from "./data.js";
+import useSpeech from "./hooks/useSpeech.js";
+import Logo from "./components/Logo.jsx";
+import Auth from "./components/Auth.jsx";
+import Aiguillage from "./components/Aiguillage.jsx";
+import Bubble from "./components/Bubble.jsx";
+import BlueprintScreen from "./components/BlueprintScreen.jsx";
+import Admin from "./components/AdminPanel.jsx";
 
-// ══════════════════════════════════════════════════════════════════════════
-// THÈMES
-// ══════════════════════════════════════════════════════════════════════════
-const THEMES = {
-  dark: {
-    orange: "#E8540A", orangeD: "#C4420A", blue: "#4AB8E8", blueD: "#2E95C5",
-    bg: "#0D0D0D", card: "#1A1A1A", border: "#2A2A2A", white: "#FFFFFF",
-    muted: "#8A8A8A", green: "#27AE60", red: "#E74C3C", text: "#F0F0F0",
-    textDim: "#AAAAAA", inputBg: "rgba(255,255,255,0.07)", inputBorder: "rgba(255,255,255,0.12)",
-    gradient: "linear-gradient(160deg,#0D0D0D 0%,#1a0a00 100%)",
-    cardBg: "rgba(255,255,255,0.04)", shadow: "rgba(0,0,0,0.4)",
-  },
-  light: {
-    orange: "#E8540A", orangeD: "#C4420A", blue: "#2E95C5", blueD: "#1a7aab",
-    bg: "#F8F8F8", card: "#FFFFFF", border: "#E2E2E2", white: "#1A1A1A",
-    muted: "#6B7280", green: "#27AE60", red: "#E74C3C", text: "#1F2937",
-    textDim: "#6B7280", inputBg: "#F3F4F6", inputBorder: "#D1D5DB",
-    gradient: "linear-gradient(160deg,#F8F8F8 0%,#FFF5EE 100%)",
-    cardBg: "rgba(0,0,0,0.02)", shadow: "rgba(0,0,0,0.08)",
-  },
-};
-const ThemeCtx = createContext(THEMES.dark);
-
-// ══════════════════════════════════════════════════════════════════════════
-// CONSTANTES
-// ══════════════════════════════════════════════════════════════════════════
-const SUPER_ADMIN = "dibyrichmond@gmail.com";
-const APP_NAME = "Réel";
-const LS = {
-  get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-  del(k) { try { localStorage.removeItem(k); } catch {} },
-};
-function genCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
-function hashPwd(p) { let h = 5381; for (let i = 0; i < p.length; i++) h = ((h << 5) + h) ^ p.charCodeAt(i); return (h >>> 0).toString(36); }
-function authHeaders() { const t = LS.get("dbr_token"); const h = { "Content-Type": "application/json" }; if (t) h["Authorization"] = "Bearer " + t; return h; }
-function fmtDate(ts) { return ts ? new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—"; }
-const STATUS_LABEL = { SPRINT: "Sprint", ACTIF: "Actif", PAUSE: "Pause", TERMINE: "Terminé" };
-const SPRINT_STEPS = ["J1", "J2-J3", "J4", "J5-J6", "J7"];
-
-function emptyBlueprint(email = "", name = "") {
-  return {
-    email,
-    participant_name: name,
-    dream_root: "",
-    discipline_minutes: "",
-    meeting_time: "",
-    fallback_time: "",
-    start_date_j1: "",
-    parcours_dbr: "",
-    accompagnement_mode: "",
-    copilot_name: "",
-    copilot_contact: "",
-    status: "SPRINT",
-    micro_action_1: "",
-    micro_action_2: "",
-    micro_action_3: "",
-    return_rule: "",
-    sprint_notes: { J1: "", "J2-J3": "", J4: "", "J5-J6": "", J7: "" },
-    updated_at: Date.now(),
-  };
-}
-
-function profileToRow(p) {
-  return {
-    "Participant": p.participant_name || "",
-    "Email": p.email || "",
-    "Rêve racine": p.dream_root || "",
-    "Discipline": p.discipline_minutes ? `${p.discipline_minutes} min` : "",
-    "Heure rendez-vous": p.meeting_time || "",
-    "2e heure RDV": p.fallback_time || "",
-    "Date début J1": p.start_date_j1 || "",
-    "Parcours DBR": p.parcours_dbr || "",
-    "Mode accompagnement": p.accompagnement_mode || "",
-    "Co-Pilote": p.copilot_name || "",
-    "Contact Co-Pilote": p.copilot_contact || "",
-    "Statut": STATUS_LABEL[p.status] || p.status || "",
-    "Règle de retour": p.return_rule || "",
-    "Sprint J1": p.sprint_notes?.J1 || "",
-    "Sprint J2-J3": p.sprint_notes?.["J2-J3"] || "",
-    "Sprint J4": p.sprint_notes?.J4 || "",
-    "Sprint J5-J6": p.sprint_notes?.["J5-J6"] || "",
-    "Sprint J7": p.sprint_notes?.J7 || "",
-    "Dernière mise à jour": fmtDate(p.updated_at),
-  };
-}
-
-function downloadCSV(filename, rows) {
-  if (!rows?.length) return;
-  const headers = Object.keys(rows[0]);
-  const body = rows.map((r) => headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(","));
-  const csv = [headers.join(","), ...body].join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: filename });
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-
-function downloadExcel(filename, rows) {
-  if (!rows?.length) return;
-  const headers = Object.keys(rows[0]);
-  const esc = (v) => String(v ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;");
-  const table = `<table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${headers.map((h) => `<td>${esc(r[h])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-  const html = `<html><head><meta charset=\"UTF-8\" /></head><body>${table}</body></html>`;
-  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: filename });
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// DONNÉES — BLOCS CHARITÉ
-// ══════════════════════════════════════════════════════════════════════════
-const CTX = `CONTEXTE GÉOGRAPHIQUE ET CULTUREL :
-- Participant basé en Côte d'Ivoire (Abidjan ou autre ville ivoirienne)
-- Monnaie : Franc CFA (FCFA) — utilise toujours FCFA, jamais euros ou dollars
-- Fuseau horaire : GMT+0 (Abidjan)
-- Références culturelles : contexte ivoirien / africain francophone
-- Si tu mentionnes des exemples de revenus, utilise des montants en FCFA (ex: 500 000 FCFA/mois)
-- Respecte les codes culturels : famille élargie, communauté, respect des aînés
-- Utilise le jargon ivoirien quand c'est pertinent (ex: "on dit quoi", "c'est comment", "y'a moyen")
-- Connais les réalités socio-économiques : débrouillardise, foi, solidarité communautaire
-- Références aux traditions ethniques (Baoulé, Bété, Dioula, Sénoufo, etc.) si pertinent
-- Comprends le contexte socio-politique : résilience, espoir, ambition malgré les défis`;
-
-const BLOCS_CHA = [
-  {
-    id: "C", label: "CLARIFIER", desc: "Identifier le rêve racine", questions: [
-      { id: "C1", title: "Tes moments de flow", q: "Donne-moi 2 à 3 moments des 30 derniers jours où tu as complètement oublié le temps. Pour chacun : qu'est-ce que tu faisais exactement, combien de temps ça a duré, qu'as-tu produit, et est-ce que quelqu'un t'a sollicité pour ça ?", hint: "Ce que tu fais quand personne ne te demande — c'est là que vit ton rêve.", ph: "Ex : Samedi dernier, j'ai aidé un ami à structurer son business plan de 14h à 18h sans voir le temps passer..." },
-      { id: "C2", title: "Les problèmes qui t'attirent", q: "Quels problèmes complexes t'attirent naturellement, même sans être payé ? Qui dans ton entourage vient te voir pour ce type de problème ? Donne un exemple concret récent.", hint: "Cherche ce qui te nourrit sans récompense.", ph: "Ex : Les gens viennent me voir quand ils sont perdus dans leurs projets..." },
-    ]
-  },
-  {
-    id: "H", label: "HONORER", desc: "Accepter le coût réel du rêve", questions: [
-      { id: "H1", title: "Le prix concret", q: "Ce rêve a un prix. Sois précis : combien d'heures par semaine tu t'engages à y consacrer, pendant combien de mois ? Qu'est-ce que tu es prêt à mettre en pause ? Nomme quelque chose de concret que tu arrêtes.", hint: "Un rêve sans coût accepté reste un caprice.", ph: "Ex : 3 soirées par semaine pendant 6 mois. J'arrête les matchs du weekend..." },
-      { id: "H2", title: "Tes peurs et obstacles", q: "Si ce rêve réussit totalement dans 2 ans — tu es visible, reconnu à Abidjan et au-delà — qu'est-ce qui te fait peur dans ce succès ? Qui pourrait freiner ce projet ? Et quelle est la peur que tu ne dis jamais à voix haute ?", hint: "Les peurs de réussir sabotent plus souvent que les peurs d'échouer.", ph: "Ex : Peur que ma famille pense que je les oublie..." },
-    ]
-  },
-  {
-    id: "A", label: "ALIGNER", desc: "Libérer l'énergie gaspillée", questions: [
-      { id: "A1", title: "Cohérence & Identité", q: "Mesure l'écart entre ce que tu dis vouloir et ce que tu fais vraiment — en heures par semaine ou en FCFA par mois. Quelle contradiction te coûte le plus d'énergie ? Et qui dois-tu devenir pour que ce rêve soit normal dans ta vie ?", hint: "L'incohérence n'est pas un jugement — c'est une mesure.", ph: "Ex : Je dis que c'est ma priorité mais j'y consacre 0h depuis 3 semaines..." },
-    ]
-  },
-];
-
-const BLOC_5P = {
-  id: "5P", label: "5 POURQUOI", desc: "Vérifier la profondeur du rêve", questions: [
-    { id: "5P1", title: "Ton rêve en une phrase", q: "Formule ton rêve en une phrase claire et concrète. Pas d'idéal flou — une direction précise. Je vais ensuite te poser la question « Pourquoi » 5 fois pour m'assurer qu'on travaille sur le vrai problème.", hint: "Dis ce qui vient naturellement. On va creuser ensemble.", ph: "Ex : Je veux créer une agence de communication digitale à Abidjan..." },
-  ]
-};
-
-const BLOC_VISION = {
-  id: "V", label: "VISION", desc: "Projeter le rêve dans le réel", questions: [
-    { id: "V1", title: "Ta vision à 3 ans", q: "Ferme les yeux. Nous sommes en 2029. Ton rêve s'est réalisé. Décris ta journée type : où es-tu ? Avec qui ? Que fais-tu entre 7h et 22h ? Combien gagnes-tu ? Quelle est ta réputation à Abidjan ?", hint: "Plus c'est précis, plus ton cerveau le programme comme atteignable.", ph: "Ex : Je me réveille dans mon appartement à Cocody, je prends mon café en regardant les mails de 3 clients internationaux..." },
-    { id: "V2", title: "Le film de ta réussite", q: "Imagine qu'un journaliste de Fraternité Matin écrit un article sur toi dans 3 ans. Quel est le titre ? Que dit l'article sur ton parcours, tes résultats, et ce qui te rend unique ?", hint: "Écris l'article comme si c'était déjà fait. Le futur se construit avec des images.", ph: "Ex : « De zéro à référence : comment [Prénom] a révolutionné [domaine] en Côte d'Ivoire »..." },
-  ]
-};
-
-const BLOCS_RITE = [
-  {
-    id: "R", label: "RENONCER", desc: "Choisir crée la puissance", questions: [
-      { id: "R1", title: "Priorité unique & Garde-fous", q: "Quelle est LA seule priorité des 90 prochains jours ? Nomme ce qui passe en pause avec une date précise. Quelle est ta règle d'arrêt ? Et qui sait que c'est ta priorité — quelqu'un qui peut te demander des comptes ?", hint: "Renoncer explicitement est plus puissant qu'ajouter.", ph: "Ex : Priorité : 3 premiers clients avant le 1er avril..." },
-    ]
-  },
-  {
-    id: "I", label: "INSTALLER", desc: "Un système simple qui tient", questions: [
-      { id: "I1", title: "Rituel ancré", q: "Quel rituel de 30 à 45 minutes maximum installes-tu — avec un déclencheur précis (après quoi, à quelle heure) ? Que produis-tu pendant ce temps ? Et quelle est ta règle si ce créneau saute un jour ?", hint: "Complexité = abandon. Simplicité = durabilité.", ph: "Ex : Chaque matin après le café, 30 min sur le projet..." },
-    ]
-  },
-  {
-    id: "T", label: "TENIR", desc: "La constance sans héroïsme", questions: [
-      { id: "T1", title: "Plan de retour", q: "Qu'est-ce qui pourrait te faire décrocher dans les 30 premiers jours ? Quelle est ta règle si tu rates 2 jours ? Si tu rates une semaine entière ? Et qui peut te dire la vérité quand tu es dans le brouillard ?", hint: "La vraie discipline c'est savoir revenir, pas ne jamais tomber.", ph: "Ex : 2 jours ratés : je reprends sans commentaire..." },
-    ]
-  },
-  {
-    id: "É", label: "ÉPROUVER", desc: "Le rêve survit-il au réel ?", questions: [
-      { id: "E1", title: "Sprint de preuve", q: "Quelle preuve concrète vas-tu produire dans les 7 prochains jours ? Une action par jour qui laisse une trace visible. À qui vas-tu la montrer pour avoir un retour réel ?", hint: "Le sprint prouve que le rêve survit au contact de la réalité.", ph: "Ex : Jour 1-7 : je contacte 2 clients potentiels par jour..." },
-    ]
-  },
-];
-
-const SYSTEM = `Tu es Réel, Compagnon DBR — accompagnateur de transformation personnelle et professionnelle, méthode CHARITÉ de DBR (Dreams Become Reality).
-
-IDENTITÉ :
-Tu n'es pas un thérapeute. Tu n'es pas un motivateur. Tu es un associé exigeant et bienveillant — quelqu'un qui respecte assez ton interlocuteur pour ne pas lui mentir, qui connaît son monde, et qui l'aide à voir ce qu'il ne veut pas voir. Le genre de personne rare qu'on cherche toute sa vie dans son entourage.
-
-CIBLE :
-Entrepreneurs et cadres africains, principalement ivoiriens. Ces profils :
-- Sont habitués à être compétents — ils n'aiment pas se sentir accompagnés de manière condescendante
-- Ont peu de temps et détectent rapidement ce qui est superficiel
-- Jonglent entre pression familiale, pression sociale de la réussite visible et ambitions personnelles
-- Beaucoup ont fait des études à l'étranger — ils connaissent les codes occidentaux mais vivent dans un contexte africain
-- La question de la légitimité et du regard des pairs est centrale
-
-TU ES :
-- Expert en psychologie positive, psychologie comportementale et développement personnel
-- Spécialiste de l'accompagnement de vie et de carrière
-- Profond connaisseur de la culture africaine, et plus précisément ivoirienne
-- Tu connais les traditions des ethnies (Baoulé, Bété, Dioula, Sénoufo, Agni, Attié, Abbey, etc.)
-- Tu maîtrises le jargon ivoirien (nouchi, expressions courantes : "on est ensemble", "c'est comment", "y'a moyen", "on dit quoi", "gbê", "c'est dja")
-- Tu comprends l'hospitalité légendaire ivoirienne, l'importance de la communauté, de la famille élargie
-- Tu connais le contexte socio-politique et économique : la résilience, la débrouillardise, la foi
-- Tu sais que l'ambition en Côte d'Ivoire passe souvent par le commerce, l'entrepreneuriat, le digital
-- Maîtrise la communication stratégique et la négociation
-- Sait recadrer une peur en opportunité sans minimiser
-- Identifie les vraies objections derrière les rationalisations
-- Utilise le silence et la question de précision comme levier
-- Sait quand pousser et quand laisser respirer
-
-REGISTRE :
-Tu t'adaptes au registre de ton interlocuteur. Avec un cadre qui écrit en français soutenu, tu restes professionnel et précis. Avec quelqu'un qui glisse du nouchi, tu peux y répondre avec une touche naturelle — sans jamais perdre ta crédibilité. Tu peux dire "on va gérer ça" au bon moment sans perdre ton autorité.
-
-${CTX}
-
-TON STYLE :
-- Prose directe, chaleureuse, jamais de listes à puces
-- "tu" familier — comme un grand frère ou une grande sœur qui te veut du bien
-- 100 à 180 mots maximum (sauf synthèse ou conclusion)
-- Tu peux utiliser des expressions ivoiriennes naturellement quand ça renforce le propos
-- Tu es exigeant mais bienveillant — tu ne laisses pas passer le flou
-- Tu identifies les forces ET les signaux faibles (peur, évitement, vague, contradiction)
-
-ACCUEIL APRÈS ABSENCE :
-Si le participant revient après une absence, accueille-le sans jugement. Pas de remarque passive-agressive. Montre que tu es content qu'il soit là et reprends là où il s'est arrêté.
-
-RÈGLES STRICTES :
-- Termine TOUJOURS par "✓ Solide." quand la réponse est validée
-- OU par une question de précision si c'est flou ou insuffisant
-- Ne passe JAMAIS à la question suivante si tu n'as pas validé avec "✓ Solide."
-- Si l'utilisateur essaie de sauter une étape, ramène-le avec bienveillance
-
-SYNTHÈSES DE BLOC :
-- 3-4 phrases qui résument ce qui a émergé
-- 1 force + 1 vigilance
-- Pour bloc C : formule "Je [verbe] [problème] pour [bénéficiaire] via [format]"
-- Termine : "Est-ce que cette synthèse te semble juste ?"
-
-5 POURQUOI :
-- Creuse chaque réponse avec "Et pourquoi c'est important pour toi ?" jusqu'à 5 fois
-- Identifie si le rêve est une fuite ou une valeur profonde
-- Valide uniquement quand tu sens la racine authentique
-
-BLOC VISION :
-- Aide à projeter le rêve dans le concret
-- Pousse la précision sensorielle (lieu, heure, montant, personnes)
-- Challenge les visions trop floues ou trop idéalisées
-
-IMPORTANT : Tu fais de l'accompagnement, JAMAIS du coaching. Tu es un Compagnon, JAMAIS un coach. N'utilise jamais les mots "coach", "coaching", "coacher".
-
-BILAN MENSUEL (4 questions fixes J+30) :
-1. Qu'est-ce que tu as concrètement fait depuis le dernier échange ?
-2. Qu'est-ce qui t'a le plus résisté ?
-3. Qu'est-ce que tu as appris sur toi-même ?
-4. Quel est ton engagement pour les 30 prochains jours ?`;
-
-// ══════════════════════════════════════════════════════════════════════════
-// LOGO
-// ══════════════════════════════════════════════════════════════════════════
-const Logo = ({ size = 40 }) => (
-  <img src="/logo.png" alt="DBR" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
-    onError={e => { e.target.style.display = "none"; const d = document.createElement("div"); d.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg,#E8540A,#C4420A);display:flex;align-items:center;justify-content:center;flex-shrink:0`; d.innerHTML = `<span style="color:#fff;font-weight:900;font-size:${Math.round(size * 0.38)}px;letter-spacing:-1px">DBR</span>`; e.target.parentNode.appendChild(d); }} />
-);
-
-// ══════════════════════════════════════════════════════════════════════════
-// SPEECH HOOK
-// ══════════════════════════════════════════════════════════════════════════
-function cleanTTS(raw) {
-  return raw.replace(/\*\*/g, "").replace(/\*/g, "").replace(/#{1,6}\s/g, "")
-    .replace(/---+/g, ".").replace(/[✓→↑⏸⬇←🎤⏹▶🌙☀️]/g, "")
-    .replace(/\[.*?\]/g, "").replace(/:\s*\n/g, ". ")
-    .replace(/\n{2,}/g, ". ").replace(/\n/g, " ")
-    .replace(/\s{2,}/g, " ").replace(/\.{2,}/g, ".").trim();
-}
-function pickVoice(voices) {
-  if (!voices.length) return null;
-  const scored = voices.map(v => { let s = 0; if (v.lang.startsWith("fr")) s += 100; if (v.lang === "fr-FR") s += 10; const n = v.name.toLowerCase(); if (n.includes("thomas") || n.includes("amelie") || n.includes("marie") || n.includes("neural") || n.includes("enhanced") || n.includes("google")) s += 50; if (n.includes("microsoft") || n.includes("apple")) s += 20; if (n.includes("espeak") || n.includes("festival")) s -= 50; return { v, s }; });
-  return scored.sort((a, b) => b.s - a.s)[0].v;
-}
-function useSpeech() {
-  const synthRef = useRef(null), recogRef = useRef(null);
-  const [speaking, setSpeaking] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [liveText, setLiveText] = useState("");
-  const [voices, setVoices] = useState([]);
-  const accRef = useRef(""), cbRef = useRef(null), shouldRef = useRef(false);
-  useEffect(() => { try { const s = window.speechSynthesis; synthRef.current = s; const load = () => { const v = s.getVoices(); if (v.length) setVoices(v); }; load(); s.addEventListener("voiceschanged", load); return () => s.removeEventListener("voiceschanged", load); } catch {} }, []);
-  const speak = useCallback((text, onDone) => { if (!synthRef.current) return; try { synthRef.current.cancel(); const clean = cleanTTS(text); if (!clean) return; const sentences = clean.match(/[^.!?]+[.!?]*/g) || [clean]; let idx = 0; const next = () => { if (idx >= sentences.length) { setSpeaking(false); onDone?.(); return; } const utt = new SpeechSynthesisUtterance(sentences[idx].trim()); const v = pickVoice(voices); if (v) { utt.voice = v; utt.lang = v.lang; } else utt.lang = "fr-FR"; utt.rate = 0.88; utt.pitch = 1.02; utt.volume = 1; if (idx === 0) utt.onstart = () => setSpeaking(true); utt.onend = () => { idx++; next(); }; utt.onerror = (e) => { if (e.error !== "interrupted") { idx++; next(); } else setSpeaking(false); }; synthRef.current.speak(utt); }; next(); } catch { setSpeaking(false); } }, [voices]);
-  const stopSpeak = useCallback(() => { try { synthRef.current?.cancel(); } catch {} setSpeaking(false); }, []);
-  const SR = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
-  const startInstance = useCallback(() => { if (!SR || !shouldRef.current) return; try { const r = new SR(); r.lang = "fr-FR"; r.continuous = false; r.interimResults = true; r.maxAlternatives = 1; r.onresult = (e) => { let interim = ""; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) { accRef.current = (accRef.current + " " + t).trim(); cbRef.current?.(accRef.current); } else interim += t; } setLiveText((accRef.current + (interim ? " " + interim : "")).trim()); }; r.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { shouldRef.current = false; setListening(false); cbRef.current?.("__MIC_BLOCKED__"); } }; r.onend = () => { if (shouldRef.current) setTimeout(() => startInstance(), 150); else setListening(false); }; r.start(); recogRef.current = r; } catch { setListening(false); } }, [SR]);
-  const startListen = useCallback((cb) => { if (!SR) return false; cbRef.current = cb; accRef.current = ""; shouldRef.current = true; setListening(true); setLiveText(""); startInstance(); return true; }, [SR, startInstance]);
-  const stopListen = useCallback(() => { shouldRef.current = false; try { recogRef.current?.stop(); recogRef.current = null; } catch {} setListening(false); return accRef.current.trim(); }, []);
-  return { speak, stopSpeak, speaking, startListen, stopListen, listening, liveText, hasSR: !!SR, voices };
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// AUTH
-// ══════════════════════════════════════════════════════════════════════════
-function Auth({ onLogin }) {
-  const T = useContext(ThemeCtx);
-  const [resetToken] = useState(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const t = params.get('reset_token');
-      if (t) { window.history.replaceState({}, '', window.location.pathname); return t; }
-    } catch {}
-    return null;
-  });
-  const [mode, setMode] = useState(resetToken ? "reset-confirm" : "login");
-  const [email, setEmail] = useState(""), [pwd, setPwd] = useState(""), [pwd2, setPwd2] = useState(""), [name, setName] = useState(""), [invCode, setInvCode] = useState("");
-  const [newPwd, setNewPwd] = useState(""), [newPwd2, setNewPwd2] = useState("");
-  const [showNewPwd, setShowNewPwd] = useState(false), [showNewPwd2, setShowNewPwd2] = useState(false);
-  const [err, setErr] = useState(""), [info, setInfo] = useState("");
-  const [showPwd, setShowPwd] = useState(false), [showPwd2, setShowPwd2] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const pwdField = (ph, val, set, show, setShow) => (
-    <div style={{ position: "relative", marginBottom: 12 }}>
-      <input value={val} onChange={e => set(e.target.value)} type={show ? "text" : "password"} placeholder={ph}
-        style={{ width: "100%", padding: "14px 44px 14px 16px", background: T.inputBg, border: `1.5px solid ${T.inputBorder}`, borderRadius: 10, fontSize: 15, fontFamily: "inherit", outline: "none", boxSizing: "border-box", color: T.text }}
-        onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
-      <button type="button" onClick={() => setShow(!show)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 18, color: T.muted, padding: 0 }}>{show ? "🙈" : "👁️"}</button>
-    </div>
-  );
-  const inp = (ph, val, set, type = "text") => (
-    <input value={val} onChange={e => set(e.target.value)} type={type} placeholder={ph}
-      style={{ width: "100%", padding: "14px 16px", background: T.inputBg, border: `1.5px solid ${T.inputBorder}`, borderRadius: 10, fontSize: 15, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 12, color: T.text }}
-      onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
-  );
-
-  async function doLogin() {
-    setErr(""); if (!email || !pwd) return setErr("Remplis tous les champs.");
-    setBusy(true);
-    try {
-      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "login", email, password: pwd }) });
-      const data = await res.json();
-      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur de connexion."); }
-      if (data.token) LS.set("dbr_token", data.token);
-      LS.set("dbr_current_user", data.user);
-      onLogin(data.user);
-    } catch { setErr("Erreur réseau. Vérifie ta connexion."); }
-    setBusy(false);
-  }
-
-  async function doRegister() {
-    setErr(""); if (!email || !pwd || !name || !invCode) return setErr("Remplis tous les champs, y compris le code d'invitation.");
-    if (pwd !== pwd2) return setErr("Les mots de passe ne correspondent pas.");
-    if (pwd.length < 6) return setErr("6 caractères minimum.");
-    setBusy(true);
-    try {
-      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "register", email, password: pwd, name, invCode }) });
-      const data = await res.json();
-      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur d'inscription."); }
-      if (data.token) LS.set("dbr_token", data.token);
-      LS.set("dbr_current_user", data.user);
-      onLogin(data.user);
-    } catch { setErr("Erreur réseau. Vérifie ta connexion."); }
-    setBusy(false);
-  }
-
-  async function doReset() {
-    setErr(""); if (!email) return setErr("Entre ton email.");
-    setBusy(true);
-    try {
-      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset", email }) });
-      const data = await res.json();
-      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur."); }
-      setInfo(data.message || "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé.");
-    } catch { setErr("Erreur réseau."); }
-    setBusy(false);
-  }
-
-  async function doResetConfirm() {
-    setErr(""); if (!newPwd) return setErr("Entre un nouveau mot de passe.");
-    if (newPwd.length < 6) return setErr("6 caractères minimum.");
-    if (newPwd !== newPwd2) return setErr("Les mots de passe ne correspondent pas.");
-    setBusy(true);
-    try {
-      const res = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reset-confirm", token: resetToken, newPassword: newPwd }) });
-      const data = await res.json();
-      if (!res.ok) { setBusy(false); return setErr(data.error || "Erreur."); }
-      if (data.token) LS.set("dbr_token", data.token);
-      LS.set("dbr_current_user", data.user);
-      onLogin(data.user);
-    } catch { setErr("Erreur réseau."); }
-    setBusy(false);
-  }
-
-  const btn = { width: "100%", padding: "15px", background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" };
-
-  return (
-    <div style={{ minHeight: "100vh", background: T.gradient, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ maxWidth: 420, width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><Logo size={90} /></div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: T.orange, letterSpacing: "6px" }}>DBR</div>
-          <div style={{ fontSize: 12, color: T.blue, letterSpacing: "4px", fontWeight: 600, marginTop: 4 }}>MÉTHODE CHARITÉ</div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Compagnon {APP_NAME} — Dreams Become Reality</div>
-        </div>
-        <div style={{ background: T.cardBg, border: `1px solid rgba(232,84,10,0.3)`, borderRadius: 16, padding: "32px 24px" }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginBottom: 24, textAlign: "center" }}>
-            {mode === "login" ? "Connexion" : mode === "register" ? "Créer un compte" : mode === "reset-confirm" ? "Nouveau mot de passe" : "Mot de passe oublié"}
-          </div>
-          {err && <div style={{ background: "rgba(231,76,60,0.12)", border: "1px solid rgba(231,76,60,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: T.red }}>⚠ {err}</div>}
-          {info && <div style={{ background: "rgba(39,174,96,0.12)", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: T.green }}>✓ {info}</div>}
-          {mode === "reset-confirm" && <>
-            <div style={{ fontSize: 13, color: T.muted, marginBottom: 16, textAlign: "center", lineHeight: 1.5 }}>Choisis un nouveau mot de passe (6 caractères minimum).</div>
-            {pwdField("Nouveau mot de passe", newPwd, setNewPwd, showNewPwd, setShowNewPwd)}
-            {pwdField("Confirmer le nouveau mot de passe", newPwd2, setNewPwd2, showNewPwd2, setShowNewPwd2)}
-          </>}
-          {mode !== "reset-confirm" && mode === "register" && inp("Prénom", name, setName)}
-          {mode !== "reset-confirm" && inp("Email", email, setEmail, "email")}
-          {mode !== "reset" && mode !== "reset-confirm" && pwdField("Mot de passe", pwd, setPwd, showPwd, setShowPwd)}
-          {mode === "register" && pwdField("Confirmer le mot de passe", pwd2, setPwd2, showPwd2, setShowPwd2)}
-          {mode === "register" && inp("Code d'invitation", invCode, setInvCode)}
-          <div style={{ marginTop: 4 }}>
-            {mode === "login" && <button onClick={doLogin} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Connexion..." : "Se connecter"}</button>}
-            {mode === "register" && <button onClick={doRegister} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Création..." : "Créer mon compte"}</button>}
-            {mode === "reset" && <button onClick={doReset} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Envoi..." : "Envoyer le lien"}</button>}
-            {mode === "reset-confirm" && <button onClick={doResetConfirm} disabled={busy} style={{...btn, opacity: busy ? 0.6 : 1}}>{busy ? "Enregistrement..." : "Enregistrer le mot de passe"}</button>}
-          </div>
-          {mode === "login" && <>
-            <button onClick={() => { setMode("register"); setErr(""); setInfo(""); }} style={{ background: "none", border: "none", color: T.blue, fontSize: 14, cursor: "pointer", padding: "6px 0", fontFamily: "inherit", display: "block", width: "100%", textAlign: "center", marginBottom: 4 }}>Pas encore de compte ? S'inscrire</button>
-            <button onClick={() => { setMode("reset"); setErr(""); setInfo(""); }} style={{ background: "none", border: "none", color: T.muted, fontSize: 12, cursor: "pointer", padding: "4px 0", fontFamily: "inherit", display: "block", width: "100%", textAlign: "center" }}>Mot de passe oublié</button>
-          </>}
-          {mode !== "login" && <button onClick={() => { setMode("login"); setErr(""); setInfo(""); }} style={{ background: "none", border: "none", color: T.blue, fontSize: 14, cursor: "pointer", padding: "6px 0", fontFamily: "inherit", display: "block", width: "100%", textAlign: "center" }}>← Retour à la connexion</button>}
-        </div>
-        <div style={{ textAlign: "center", marginTop: 16, fontSize: 11, color: T.muted, opacity: 0.5 }}>Clarté · Stabilité · Liberté</div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// AIGUILLAGE
-// ══════════════════════════════════════════════════════════════════════════
-function Aiguillage({ user, onKnow, onDontKnow, onLogout }) {
-  const T = useContext(ThemeCtx);
-  const [choice, setChoice] = useState(null);
-  return (
-    <div style={{ minHeight: "100vh", background: T.gradient, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ maxWidth: 560, width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}><Logo size={72} /></div>
-          <div style={{ fontSize: 14, color: T.muted, marginBottom: 2 }}>Bienvenue, {user.name}</div>
-          <div style={{ fontSize: 12, color: T.blue, letterSpacing: "3px" }}>COMPAGNON {APP_NAME.toUpperCase()}</div>
-        </div>
-        <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "36px 28px" }}>
-          <div style={{ fontSize: 15, fontWeight: 500, color: T.orange, marginBottom: 8, textAlign: "center", fontStyle: "italic", lineHeight: 1.6 }}>"Je suis Réel. Ce que tu t'apprêtes à vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?"</div>
-          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", marginBottom: 20, lineHeight: 1.5 }}>Pas un outil de productivité. Vivre de ce pourquoi tu es fait. Pas survivre — vivre.</div>
-          <div style={{ fontSize: 15, color: T.textDim, textAlign: "center", marginBottom: 32, lineHeight: 1.7 }}>Une seule question pour commencer :<br /><strong style={{ color: T.text }}>As-tu déjà une idée — même floue — de la direction que tu veux donner à ta vie ?</strong></div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <button onClick={() => setChoice("know")} style={{ padding: "18px 24px", background: choice === "know" ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : "rgba(232,84,10,0.08)", border: `2px solid ${choice === "know" ? T.orange : "rgba(232,84,10,0.2)"}`, borderRadius: 12, cursor: "pointer", textAlign: "left" }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 4 }}>Oui, j'ai une idée 💡</div>
-              <div style={{ fontSize: 13, color: T.muted }}>On va vérifier que c'est le vrai rêve — et le transformer en plan</div>
-            </button>
-            <button onClick={() => setChoice("dontknow")} style={{ padding: "18px 24px", background: choice === "dontknow" ? `linear-gradient(135deg,${T.blueD},${T.blue})` : "rgba(74,184,232,0.06)", border: `2px solid ${choice === "dontknow" ? T.blue : "rgba(74,184,232,0.15)"}`, borderRadius: 12, cursor: "pointer", textAlign: "left" }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 4 }}>Non, je cherche encore 🧭</div>
-              <div style={{ fontSize: 13, color: T.muted }}>On va creuser ensemble pour trouver ta direction</div>
-            </button>
-          </div>
-          {choice && <button onClick={() => choice === "know" ? onKnow() : onDontKnow()} style={{ width: "100%", padding: "15px", marginTop: 24, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", fontFamily: "inherit" }}>Commencer le parcours →</button>}
-          <button onClick={onLogout} style={{ width: "100%", marginTop: 12, background: "none", border: "none", fontSize: 12, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Se déconnecter</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// BUBBLE
-// ══════════════════════════════════════════════════════════════════════════
-function Bubble({ msg, id, onSpeak, speaking, activeSpeakId }) {
-  const T = useContext(ThemeCtx);
-  const isUser = msg.role === "user"; const raw = msg.content || "";
-  const fmt = (text) => text.split("\n").map((line, i) => {
-    if (/^-{3,}$/.test(line.trim())) return <hr key={i} style={{ border: "none", borderBottom: `1px solid rgba(232,84,10,0.2)`, margin: "10px 0" }} />;
-    const parts = line.split(/\*\*(.*?)\*\*/g);
-    return <div key={i} style={{ marginBottom: line.trim() ? 3 : 7, lineHeight: 1.75 }}>{parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: T.orange }}>{p}</strong> : p)}</div>;
-  });
-  if (msg.sys) return (<div style={{ textAlign: "center", padding: "14px 0" }}><span style={{ background: "rgba(232,84,10,0.12)", color: T.orange, fontSize: 10, fontWeight: 700, letterSpacing: "2px", padding: "5px 16px", borderRadius: 20, border: "1px solid rgba(232,84,10,0.25)", textTransform: "uppercase" }}>{raw}</span></div>);
-  if (isUser) return (<div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}><div style={{ maxWidth: "80%", background: `linear-gradient(135deg,rgba(232,84,10,0.2),rgba(196,66,10,0.15))`, border: "1px solid rgba(232,84,10,0.25)", color: T.text, padding: "13px 17px", borderRadius: "14px 14px 3px 14px", fontSize: 15, lineHeight: 1.65 }}>{fmt(raw)}{msg.audio && <div style={{ fontSize: 10, color: T.muted, marginTop: 4, opacity: 0.6 }}>🎤 audio</div>}</div></div>);
-  const isSynth = msg.synth; const isConc = msg.conc;
-  const boxStyle = isConc ? { background: `linear-gradient(135deg,rgba(232,84,10,0.12),rgba(74,184,232,0.08))`, border: `1px solid ${T.orange}`, borderRadius: 12, padding: "22px 24px" } : isSynth ? { background: "rgba(74,184,232,0.06)", border: "1px solid rgba(74,184,232,0.2)", borderLeft: `4px solid ${T.blue}`, borderRadius: 8, padding: "16px 20px" } : { background: T.card, border: `1px solid ${T.border}`, borderRadius: "3px 14px 14px 14px", padding: "13px 17px" };
-  const isTalking = activeSpeakId === id && speaking;
-  return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 14 }}>
-      <Logo size={34} />
-      <div style={{ flex: 1, ...boxStyle, fontSize: 15, color: T.text }}>
-        {isConc && <div style={{ fontSize: 10, color: T.orange, letterSpacing: "2px", marginBottom: 10, textTransform: "uppercase", fontWeight: 700 }}>Conclusion de ton parcours</div>}
-        {fmt(raw)}
-        <button onClick={() => onSpeak(raw, id)} style={{ marginTop: 8, background: "none", border: `1px solid ${T.border}`, borderRadius: 4, cursor: "pointer", fontSize: 10, color: T.muted, padding: "3px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}>
-          {isTalking ? "⏹ Arrêter" : "▶ Écouter"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// BLUEPRINT 90J
-// ══════════════════════════════════════════════════════════════════════════
-function BlueprintScreen({ user, profile, onChange, onSave, onBack, saving, saveMsg }) {
-  const T = useContext(ThemeCtx);
-
-  const update = (field, value) => onChange({ ...profile, [field]: value, updated_at: Date.now() });
-  const updateSprint = (key, value) => onChange({ ...profile, sprint_notes: { ...(profile.sprint_notes || {}), [key]: value }, updated_at: Date.now() });
-
-  const missing = [
-    ["dream_root", "Mon rêve racine"],
-    ["discipline_minutes", "Ma discipline quotidienne"],
-    ["meeting_time", "Mon heure de rendez-vous"],
-    ["start_date_j1", "Date de début J1"],
-    ["parcours_dbr", "Parcours DBR"],
-    ["accompagnement_mode", "Mode d'accompagnement"],
-    ["copilot_name", "Nom et prénom du Co-Pilote"],
-    ["copilot_contact", "Contact du Co-Pilote"],
-  ].filter(([k]) => !String(profile[k] || "").trim()).map(([, l]) => l);
-
-  const card = { background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: "20px 18px" };
-  const sectionNum = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#fff", fontSize: 13, fontWeight: 700, marginRight: 10, flexShrink: 0 };
-  const sectionTitle = { fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", marginBottom: 4 };
-  const label = { fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 600, letterSpacing: "0.3px" };
-  const input = { width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" };
-  const selectStyle = { ...input, appearance: "auto", WebkitAppearance: "menulist" };
-  const optStyle = { background: T.card, color: T.text };
-
-  return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text }}>
-      <div style={{ background: T.card, borderBottom: `2px solid ${T.orange}`, padding: "12px 18px" }}>
-        <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 11, color: T.blue, letterSpacing: "2px", marginBottom: 4 }}>MÉTHODE CHARITÉ</div>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>Blueprint 90 jours</div>
-            <div style={{ fontSize: 12, color: T.muted }}>Moteur opérationnel J1-J90 — rempli pendant le parcours.</div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onSave} disabled={saving} style={{ padding: "10px 16px", background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: saving ? 0.6 : 1 }}>{saving ? "Sauvegarde..." : "Sauvegarder"}</button>
-            <button onClick={() => downloadCSV(`DBR_Blueprint_${(user?.name || "participant").replace(/\s+/g, "_")}.csv`, [profileToRow(profile)])} style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>CSV</button>
-            <button onClick={() => downloadExcel(`DBR_Blueprint_${(user?.name || "participant").replace(/\s+/g, "_")}.xls`, [profileToRow(profile)])} style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.orange, cursor: "pointer", fontFamily: "inherit" }}>Excel</button>
-            <button onClick={onBack} style={{ padding: "10px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Retour</button>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "20px 14px 40px", display: "grid", gap: 14 }}>
-        {!!saveMsg && <div style={{ ...card, borderColor: saveMsg.startsWith("✓") ? "rgba(39,174,96,0.4)" : "rgba(231,76,60,0.4)", color: saveMsg.startsWith("✓") ? T.green : T.red }}>{saveMsg}</div>}
-        {missing.length > 0 && <div style={{ ...card, borderColor: "rgba(232,84,10,0.35)" }}><strong style={{ color: T.orange }}>Points manquants :</strong> <span style={{ color: T.muted }}>{missing.join(" · ")}</span></div>}
-
-        <div style={card}>
-          <div style={sectionTitle}><span style={sectionNum}>1</span>Mon engagement</div>
-          <div style={{ fontSize: 12, color: T.muted, marginBottom: 14, marginLeft: 38 }}>Ce rendez-vous est non négociable. Les 7 premiers jours : même 15 minutes valent mieux que zéro.</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
-            <div>
-              <div style={label}>Mon rêve racine</div>
-              <textarea value={profile.dream_root || ""} onChange={(e) => update("dream_root", e.target.value)} rows={3} style={{ ...input, resize: "vertical" }} />
-            </div>
-            <div>
-              <div style={label}>Discipline quotidienne</div>
-              <select value={profile.discipline_minutes || ""} onChange={(e) => update("discipline_minutes", e.target.value)} style={selectStyle}>
-                <option value="" style={optStyle}>Choisir</option>
-                <option value="30" style={optStyle}>30 min</option>
-                <option value="45" style={optStyle}>45 min</option>
-                <option value="60" style={optStyle}>60 min</option>
-              </select>
-            </div>
-            <div>
-              <div style={label}>Heure de rendez-vous</div>
-              <input type="time" value={profile.meeting_time || ""} onChange={(e) => update("meeting_time", e.target.value)} style={input} />
-            </div>
-            <div>
-              <div style={label}>2e heure de RDV si raté</div>
-              <input type="time" value={profile.fallback_time || ""} onChange={(e) => update("fallback_time", e.target.value)} style={input} />
-            </div>
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={sectionTitle}><span style={sectionNum}>2</span>Structure de ta séance quotidienne</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 10 }}>
-            <thead><tr style={{ background: T.cardBg }}><th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${T.border}` }}>Moment</th><th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${T.border}` }}>Ce que tu fais</th><th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${T.border}` }}>Durée</th></tr></thead>
-            <tbody>
-              <tr><td style={{ padding: 8, borderBottom: `1px solid ${T.border}` }}>Ancrage</td><td style={{ padding: 8, borderBottom: `1px solid ${T.border}` }}>Relis ton rêve racine, ton engagement, puis pose l'intention du jour.</td><td style={{ padding: 8, borderBottom: `1px solid ${T.border}` }}>2-5 min</td></tr>
-              <tr><td style={{ padding: 8, borderBottom: `1px solid ${T.border}` }}>Action du jour</td><td style={{ padding: 8, borderBottom: `1px solid ${T.border}` }}>Exécute l'action définie la veille. Une seule action.</td><td style={{ padding: 8, borderBottom: `1px solid ${T.border}` }}>80 % du temps</td></tr>
-              <tr><td style={{ padding: 8 }}>Bilan</td><td style={{ padding: 8 }}>Oui/Non, blocage, solution, puis action de demain.</td><td style={{ padding: 8 }}>5-10 min</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div style={card}>
-          <div style={sectionTitle}><span style={sectionNum}>3</span>Sprint J1 → J7</div>
-          <div style={{ fontSize: 12, color: T.muted, marginBottom: 14, marginLeft: 38 }}>Objectif : valider la faisabilité avant le déploiement 90 jours.</div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {SPRINT_STEPS.map((step) => (
-              <div key={step}>
-                <div style={label}>{step} · Note d'observation</div>
-                <input value={profile.sprint_notes?.[step] || ""} onChange={(e) => updateSprint(step, e.target.value)} style={input} placeholder="Ex : exécution faite / blocage / ajustement" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={sectionTitle}><span style={sectionNum}>4</span>Règle de retour</div>
-          <div style={{ fontSize: 12, color: T.muted, marginBottom: 10, marginLeft: 38 }}>Que fais-tu si tu rates 2 jours ? Définis ta règle de reprise.</div>
-          <textarea value={profile.return_rule || ""} onChange={(e) => update("return_rule", e.target.value)} rows={3} style={{ ...input, resize: "vertical" }} placeholder="Si je rate 2 jours, je reprends le lendemain avec 15 min minimum..." />
-        </div>
-
-        <div style={card}>
-          <div style={sectionTitle}><span style={sectionNum}>5</span>Profil participant</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
-            <div><div style={label}>Date de début J1</div><input type="date" value={profile.start_date_j1 || ""} onChange={(e) => update("start_date_j1", e.target.value)} style={input} /></div>
-            <div><div style={label}>Parcours DBR</div><select value={profile.parcours_dbr || ""} onChange={(e) => update("parcours_dbr", e.target.value)} style={selectStyle}><option value="" style={optStyle}>Choisir</option><option value="CHA" style={optStyle}>CHA</option><option value="RITE" style={optStyle}>RITE</option></select></div>
-            <div><div style={label}>Mode d'accompagnement</div><select value={profile.accompagnement_mode || ""} onChange={(e) => update("accompagnement_mode", e.target.value)} style={selectStyle}><option value="" style={optStyle}>Choisir</option><option value="REEL" style={optStyle}>Réel</option><option value="B2B" style={optStyle}>B2B</option><option value="DUO" style={optStyle}>Duo (Réel + B2B)</option></select></div>
-            <div><div style={label}>Statut</div><select value={profile.status || "SPRINT"} onChange={(e) => update("status", e.target.value)} style={selectStyle}><option value="SPRINT" style={optStyle}>Sprint</option><option value="ACTIF" style={optStyle}>Actif</option><option value="PAUSE" style={optStyle}>Pause</option><option value="TERMINE" style={optStyle}>Terminé</option></select></div>
-            <div><div style={label}>Nom et prénom du Co-Pilote (fin de Aligner)</div><input value={profile.copilot_name || ""} onChange={(e) => update("copilot_name", e.target.value)} style={input} /></div>
-            <div><div style={label}>Contact du Co-Pilote</div><input value={profile.copilot_contact || ""} onChange={(e) => update("copilot_contact", e.target.value)} style={input} placeholder="Téléphone" /></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// ADMIN CONSOLE
-// ══════════════════════════════════════════════════════════════════════════
-function Admin({ user, onBack }) {
-  const T = useContext(ThemeCtx);
-  const [tab, setTab] = useState("dashboard");
-  const [allUsers, setAllUsers] = useState([]);
-  const [profiles, setProfiles] = useState([]);
-  const [codes, setCodes] = useState([]);
-  const [adminLoading, setAdminLoading] = useState(true);
-  const [sessionStats, setSessionStats] = useState({ started: 0, completed: 0, details: [] });
-  const [newRole, setNewRole] = useState("participant");
-  const [codeEmail, setCodeEmail] = useState("");
-  const [codeCount, setCodeCount] = useState(1);
-  const [copied, setCopied] = useState(null);
-  const [codeSending, setCodeSending] = useState(null);
-  const [codeMsg, setCodeMsg] = useState("");
-  const [emailTo, setEmailTo] = useState(""), [emailSubject, setEmailSubject] = useState(""), [emailBody, setEmailBody] = useState("");
-  const [emailStatus, setEmailStatus] = useState("");
-
-  const WEEK = 7 * 24 * 3600 * 1000;
-  const isExpired = (c) => c.expires_at && Date.now() > c.expires_at;
-  const codeStatusFn = (c) => c.used_by ? "used" : isExpired(c) ? "expired" : "available";
-
-  async function loadData() {
-    setAdminLoading(true);
-    try {
-      const [usersRes, codesRes, statsRes, profilesRes] = await Promise.all([
-        fetch("/api/admin-users", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
-        fetch("/api/codes", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list", adminEmail: user.email }) }),
-        fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "stats" }) }),
-        fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "list" }) })
-      ]);
-      if (usersRes.ok) { const d = await usersRes.json(); setAllUsers(d.users || []); }
-      if (codesRes.ok) { const d = await codesRes.json(); setCodes(d.codes || []); }
-      if (statsRes.ok) { const d = await statsRes.json(); setSessionStats(d); }
-      if (profilesRes.ok) { const d = await profilesRes.json(); setProfiles(d.profiles || []); }
-    } catch {}
-    setAdminLoading(false);
-  }
-
-  useEffect(() => { loadData(); }, []);
-
-  const stats = {
-    total: allUsers.length,
-    admins: allUsers.filter(u => u.is_admin).length,
-    started: sessionStats.started || 0,
-    completed: sessionStats.completed || 0,
-    profiles: profiles.length,
-    codesUsed: codes.filter(c => c.used_by).length,
-    codesAvailable: codes.filter(c => codeStatusFn(c) === "available").length,
-  };
-
-  async function generateCodes() {
-    try {
-      const res = await fetch("/api/codes", {
-        method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ action: "create", adminEmail: user.email, role: newRole, forEmail: codeEmail, count: codeCount })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setCodeEmail("");
-        setCodeMsg(`✓ ${data.created} code${data.created > 1 ? "s" : ""} créé${data.created > 1 ? "s" : ""}${codeEmail.trim() ? ` pour ${codeEmail.trim()} (7j)` : ""}`);
-        loadData();
-      } else setCodeMsg(data.error || "Erreur.");
-    } catch { setCodeMsg("Erreur réseau."); }
-    setTimeout(() => setCodeMsg(""), 4000);
-  }
-
-  async function deleteCode(codeId) {
-    if (!window.confirm("Supprimer ce code ?")) return;
-    try {
-      const res = await fetch("/api/codes", {
-        method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ action: "delete", adminEmail: user.email, codeId })
-      });
-      if (res.ok) { setCodeMsg("✓ Code supprimé"); loadData(); }
-      else { const d = await res.json(); setCodeMsg(d.error || "Erreur suppression."); }
-    } catch { setCodeMsg("Erreur réseau."); }
-    setTimeout(() => setCodeMsg(""), 3000);
-  }
-
-  function copyCode(code) {
-    navigator.clipboard?.writeText(code).then(() => { setCopied(code); setTimeout(() => setCopied(null), 2000); }).catch(() => {});
-  }
-
-  async function sendCodeEmail(c) {
-    const to = c.for_email || ""; if (!to) return;
-    setCodeSending(c.code);
-    try {
-      const expire = c.expires_at ? `<br><br>Ce code est valable jusqu'au ${new Date(c.expires_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.` : "";
-      const res = await fetch("/api/email", { method: "POST", headers: authHeaders(), body: JSON.stringify({ to, subject: `DBR - Code d'invitation accompagnement Méthode CHARITE`, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:520px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:36px;"><div style="text-align:center;margin-bottom:24px;font-size:24px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="text-align:center;font-size:12px;color:#4AB8E8;letter-spacing:3px;margin-bottom:32px;">MÉTHODE CHARITÉ</div><div style="font-size:15px;line-height:1.8;color:#AAAAAA;margin-bottom:24px;">Tu as été invité(e) à rejoindre le parcours d'accompagnement avec ton Compagnon ${APP_NAME}.</div><div style="text-align:center;background:rgba(232,84,10,0.08);border:2px dashed rgba(232,84,10,0.4);border-radius:12px;padding:24px;margin-bottom:24px;"><div style="font-size:12px;color:#8A8A8A;margin-bottom:8px;">TON CODE D'INVITATION</div><div style="font-size:32px;font-weight:900;letter-spacing:6px;color:#E8540A;font-family:monospace;">${c.code}</div></div><div style="font-size:13px;color:#8A8A8A;text-align:center;">Utilise ce code lors de ton inscription.${expire}</div></div></div>` }) });
-      if (res.ok) setCodeMsg(`✓ Code envoyé à ${to}`); else { const d = await res.json(); setCodeMsg(d.error || "Erreur d'envoi."); }
-    } catch { setCodeMsg("Erreur réseau."); }
-    setCodeSending(null); setTimeout(() => setCodeMsg(""), 4000);
-  }
-
-  async function toggleAdmin(email) {
-    if (email === SUPER_ADMIN) return;
-    try {
-      const res = await fetch("/api/admin-users", {
-        method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ action: "toggle-admin", adminEmail: user.email, targetEmail: email })
-      });
-      if (res.ok) loadData();
-    } catch {}
-  }
-
-  async function removeUser(email) {
-    if (email === SUPER_ADMIN || email === user.email) return;
-    if (!window.confirm(`Supprimer ${email} ?`)) return;
-    try {
-      const res = await fetch("/api/admin-users", {
-        method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ action: "remove", adminEmail: user.email, targetEmail: email })
-      });
-      if (res.ok) loadData();
-    } catch {}
-  }
-
-  async function dlTranscript(email) {
-    // Try server first, fallback to localStorage
-    let sess = null;
-    try {
-      const res = await fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "get", targetEmail: email }) });
-      if (res.ok) { const d = await res.json(); if (d.sessions?.length > 0) sess = d.sessions[0]; }
-    } catch {}
-    if (!sess) sess = LS.get(`dbr_sess_${email}`);
-    if (!sess || !sess.msgs?.length) return alert("Aucun transcript disponible pour ce participant.");
-    const u = allUsers.find(x => x.email === email);
-    const lines = sess.msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${u?.name || email}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-    const blob = new Blob([`PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${u?.name || email} (${email})\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"═".repeat(50)}\n\n${lines}`], { type: "text/plain;charset=utf-8" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${(u?.name || email).replace(/\s+/g, "_")}.txt` });
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  }
-
-  function exportCSV() {
-    const headers = ["Nom", "Email", "Rôle", "Admin", "Inscrit le"];
-    const rows = allUsers.map(u => [u.name, u.email, u.role || "participant", u.is_admin ? "Oui" : "Non", fmtDate(u.created_at)]);
-    const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_Export_${new Date().toISOString().slice(0, 10)}.csv` });
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  }
-
-  function exportProfilesCSV() {
-    if (!profiles.length) return;
-    const rows = profiles.map((p) => profileToRow({ ...p, participant_name: allUsers.find((u) => u.email === p.email)?.name || "" }));
-    downloadCSV(`DBR_Blueprints_${new Date().toISOString().slice(0, 10)}.csv`, rows);
-  }
-
-  function exportProfilesExcel() {
-    if (!profiles.length) return;
-    const rows = profiles.map((p) => profileToRow({ ...p, participant_name: allUsers.find((u) => u.email === p.email)?.name || "" }));
-    downloadExcel(`DBR_Blueprints_${new Date().toISOString().slice(0, 10)}.xls`, rows);
-  }
-
-  async function sendEmail() {
-    if (!emailTo || !emailSubject || !emailBody) return setEmailStatus("Remplis tous les champs.");
-    setEmailStatus("Envoi en cours...");
-    try {
-      const res = await fetch("/api/email", { method: "POST", headers: authHeaders(), body: JSON.stringify({ to: emailTo, subject: emailSubject, html: `<div style="font-family:system-ui;background:#0D0D0D;color:#F0F0F0;padding:40px 24px;"><div style="max-width:560px;margin:0 auto;background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:32px;"><div style="text-align:center;margin-bottom:20px;font-size:22px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div><div style="font-size:14px;line-height:1.8;color:#AAAAAA;">${emailBody.replace(/\n/g, "<br>")}</div></div></div>` }) });
-      if (res.ok) { setEmailStatus("✓ Email envoyé !"); setEmailTo(""); setEmailSubject(""); setEmailBody(""); } else { const d = await res.json(); setEmailStatus(d.error || "Erreur d'envoi."); }
-    } catch { setEmailStatus("Erreur réseau."); }
-  }
-
-  const tabBtn = (id, label) => <button onClick={() => setTab(id)} style={{ padding: "8px 16px", background: tab === id ? T.orange : "transparent", border: `1px solid ${tab === id ? T.orange : T.border}`, borderRadius: 6, color: tab === id ? "#FFFFFF" : T.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{label}</button>;
-  const statCard = (label, val, color) => (
-    <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "18px 20px", borderTop: `3px solid ${color}`, flex: "1 1 140px", minWidth: 140 }}>
-      <div style={{ fontSize: 28, fontWeight: 700, color }}>{val}</div>
-      <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>{label}</div>
-    </div>
-  );
-
-  return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "system-ui,sans-serif" }}>
-      <div style={{ background: T.card, borderBottom: `2px solid ${T.orange}`, padding: "0 20px" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Logo size={28} />
-            <span style={{ fontWeight: 700, color: T.text }}>Console Admin — {APP_NAME}</span>
-          </div>
-          <button onClick={onBack} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "6px 14px", color: T.muted, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>← Retour</button>
-        </div>
-      </div>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
-        {adminLoading && <div style={{ textAlign: "center", padding: 40, color: T.muted }}>Chargement des données...</div>}
-        {!adminLoading && <>
-        {/* DASHBOARD */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 28 }}>
-          {statCard("Participants", stats.total, T.blue)}
-          {statCard("Admins", stats.admins, T.orange)}
-          {statCard("Blueprints", stats.profiles, "#8E44AD")}
-          {statCard("Parcours initiés", stats.started, "#9B59B6")}
-          {statCard("Parcours achevés", stats.completed, T.green)}
-          {statCard("Codes dispo", stats.codesAvailable, "#3498DB")}
-          {statCard("Codes utilisés", stats.codesUsed, "#F39C12")}
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
-          {tabBtn("users", "👥 Participants")}
-          {tabBtn("profiles", "📘 Blueprint")}
-          {tabBtn("codes", "🔑 Invitations")}
-          {tabBtn("email", "📧 Email")}
-          {tabBtn("export", "📊 Export")}
-        </div>
-
-        {/* USERS TAB */}
-        {tab === "users" && (
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ background: T.cardBg }}>{["Nom", "Email", "Rôle", "Inscrit", "Actions"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-              <tbody>{allUsers.map(u => (
-                <tr key={u.email} style={{ borderBottom: `1px solid ${T.border}` }}>
-                  <td style={{ padding: "12px 14px", color: T.text, fontWeight: 500 }}>{u.name}{u.email === SUPER_ADMIN && <span style={{ marginLeft: 6, fontSize: 9, color: T.orange, border: `1px solid ${T.orange}`, borderRadius: 4, padding: "1px 5px" }}>SUPER</span>}{u.is_admin && u.email !== SUPER_ADMIN && <span style={{ marginLeft: 6, fontSize: 9, color: T.blue, border: `1px solid ${T.blue}`, borderRadius: 4, padding: "1px 5px" }}>ADMIN</span>}</td>
-                  <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{u.email}</td>
-                  <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: u.is_admin ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: u.is_admin ? T.orange : T.blue }}>{u.role || "participant"}</span></td>
-                  <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{fmtDate(u.created_at)}</td>
-                  <td style={{ padding: "12px 14px" }}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button onClick={() => dlTranscript(u.email)} style={{ padding: "3px 8px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, color: T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>
-                    {u.email !== SUPER_ADMIN && <button onClick={() => toggleAdmin(u.email)} style={{ padding: "3px 8px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>{u.is_admin ? "Retirer admin" : "→ Admin"}</button>}
-                    {u.email !== SUPER_ADMIN && u.email !== user.email && <button onClick={() => removeUser(u.email)} style={{ padding: "3px 8px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✕</button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        )}
-
-        {/* INVITATION CODES TAB */}
-        {tab === "codes" && (
-          <div>
-            {/* Generator */}
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "24px", marginBottom: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 16 }}>Générer des codes d'invitation</div>
-              {/* Role selector */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Rôle</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[["participant", "Participant"], ["admin", "Admin"]].map(([val, label]) => (
-                    <button key={val} onClick={() => setNewRole(val)} style={{
-                      padding: "8px 20px", borderRadius: 8, fontSize: 13, fontFamily: "inherit", cursor: "pointer",
-                      background: newRole === val ? (val === "admin" ? T.orange : T.blue) : "transparent",
-                      border: `1.5px solid ${newRole === val ? (val === "admin" ? T.orange : T.blue) : T.border}`,
-                      color: newRole === val ? "#FFFFFF" : T.muted, fontWeight: newRole === val ? 600 : 400,
-                    }}>{label}</button>
-                  ))}
-                </div>
-              </div>
-              {/* Email (optional) */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Email du destinataire <span style={{ opacity: 0.6 }}>(optionnel — laisse vide pour un code libre)</span></div>
-                <input value={codeEmail} onChange={e => setCodeEmail(e.target.value)} type="email" placeholder="ex: participant@email.com"
-                  style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }}
-                  onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
-                {codeEmail.trim() && <div style={{ fontSize: 11, color: T.blue, marginTop: 4 }}>⏱ Code lié à cet email, valable 7 jours</div>}
-              </div>
-              {/* Count (random codes only) */}
-              {!codeEmail.trim() && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontWeight: 500 }}>Nombre de codes</div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {[1, 3, 5, 10].map(n => (
-                      <button key={n} onClick={() => setCodeCount(n)} style={{
-                        padding: "8px 16px", borderRadius: 8, fontSize: 13, fontFamily: "inherit", cursor: "pointer",
-                        background: codeCount === n ? T.orange : "transparent",
-                        border: `1.5px solid ${codeCount === n ? T.orange : T.border}`,
-                        color: codeCount === n ? "#FFFFFF" : T.muted,
-                      }}>{n}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <button onClick={generateCodes} style={{ padding: "12px 28px", background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                Générer {codeEmail.trim() ? "le code" : `${codeCount} code${codeCount > 1 ? "s" : ""}`}
-              </button>
-              {codeMsg && <div style={{ marginTop: 12, fontSize: 13, color: codeMsg.startsWith("✓") ? T.green : T.red, fontWeight: 500 }}>{codeMsg}</div>}
-            </div>
-            {/* Codes list */}
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr style={{ background: T.cardBg }}>{["Code", "Rôle", "Destinataire", "Expire", "Statut", "Actions"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-                <tbody>{codes.map((c, i) => {
-                  const st = codeStatusFn(c);
-                  const stColors = { available: { bg: "rgba(232,84,10,0.1)", color: T.orange, label: "Disponible" }, expired: { bg: "rgba(231,76,60,0.1)", color: T.red, label: "Expiré" }, used: { bg: "rgba(39,174,96,0.1)", color: T.green, label: "Utilisé" } };
-                  const sc = stColors[st];
-                  return (
-                    <tr key={c.id || i} style={{ borderBottom: `1px solid ${T.border}`, opacity: st === "expired" ? 0.5 : 1 }}>
-                      <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, color: st === "available" ? T.orange : T.muted, fontSize: 15, letterSpacing: "2px" }}>{c.code}</td>
-                      <td style={{ padding: "12px 14px" }}><span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, background: c.role === "admin" ? "rgba(232,84,10,0.1)" : "rgba(74,184,232,0.1)", color: c.role === "admin" ? T.orange : T.blue }}>{c.role || "participant"}</span></td>
-                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 12 }}>{c.for_email || c.used_by || "— libre"}</td>
-                      <td style={{ padding: "12px 14px", color: T.muted, fontSize: 11 }}>{c.expires_at ? fmtDate(c.expires_at) : "∞"}</td>
-                      <td style={{ padding: "12px 14px" }}><span style={{ padding: "3px 10px", borderRadius: 10, fontSize: 11, background: sc.bg, color: sc.color, fontWeight: 500 }}>{sc.label}</span></td>
-                      <td style={{ padding: "12px 14px" }}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {st === "available" && <>
-                            <button onClick={() => copyCode(c.code)} style={{ padding: "4px 10px", background: copied === c.code ? "rgba(39,174,96,0.15)" : "rgba(74,184,232,0.08)", border: `1px solid ${copied === c.code ? "rgba(39,174,96,0.3)" : "rgba(74,184,232,0.2)"}`, borderRadius: 6, color: copied === c.code ? T.green : T.blue, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
-                              {copied === c.code ? "✓ Copié" : "📋 Copier"}
-                            </button>
-                            {c.for_email && <button onClick={() => sendCodeEmail(c)} disabled={codeSending === c.code} style={{ padding: "4px 10px", background: "rgba(232,84,10,0.08)", border: "1px solid rgba(232,84,10,0.2)", borderRadius: 6, color: T.orange, fontSize: 11, cursor: "pointer", fontFamily: "inherit", opacity: codeSending === c.code ? 0.5 : 1 }}>
-                              {codeSending === c.code ? "Envoi..." : "📧 Envoyer"}
-                            </button>}
-                          </>}
-                          <button onClick={() => deleteCode(c.id)} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, color: T.red, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>🗑 Supprimer</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}</tbody>
-              </table>
-              {codes.length === 0 && <div style={{ padding: 32, textAlign: "center", color: T.muted, fontSize: 14 }}>Aucun code créé</div>}
-            </div>
-          </div>
-        )}
-
-        {/* EMAIL TAB */}
-        {tab === "email" && (
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "24px" }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 16 }}>Envoyer un email</div>
-            <input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="Email destinataire" style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 14, color: T.text, marginBottom: 10, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }} />
-            <input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Sujet" style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 14, color: T.text, marginBottom: 10, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }} />
-            <textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} placeholder="Message..." rows={5} style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 14, color: T.text, marginBottom: 12, boxSizing: "border-box", resize: "vertical", outline: "none", fontFamily: "inherit" }} />
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <button onClick={sendEmail} style={{ padding: "10px 24px", background: T.orange, border: "none", borderRadius: 8, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Envoyer</button>
-              {emailStatus && <span style={{ fontSize: 13, color: emailStatus.includes("✓") ? T.green : emailStatus.includes("Envoi") ? T.blue : T.red }}>{emailStatus}</span>}
-            </div>
-          </div>
-        )}
-
-        {/* BLUEPRINT TAB */}
-        {tab === "profiles" && (
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ background: T.cardBg }}>{["Participant", "Email", "Parcours", "Discipline", "Statut", "Co-Pilote", "Maj"].map(h => <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: T.muted, fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
-              <tbody>
-                {profiles.map((p, i) => {
-                  const participant = allUsers.find((u) => u.email === p.email);
-                  return (
-                    <tr key={p.email || i} style={{ borderBottom: `1px solid ${T.border}` }}>
-                      <td style={{ padding: "12px 14px", color: T.text, fontWeight: 600 }}>{participant?.name || "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.muted }}>{p.email}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.parcours_dbr || "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.discipline_minutes ? `${p.discipline_minutes} min` : "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{STATUS_LABEL[p.status] || p.status || "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.text }}>{p.copilot_name || "—"}</td>
-                      <td style={{ padding: "12px 14px", color: T.muted }}>{fmtDate(p.updated_at)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {profiles.length === 0 && <div style={{ padding: 24, textAlign: "center", color: T.muted }}>Aucun profil Blueprint enregistré.</div>}
-          </div>
-        )}
-
-        {/* EXPORT TAB */}
-        {tab === "export" && (
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "24px", textAlign: "center" }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: T.text, marginBottom: 16 }}>Exporter les données</div>
-            <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={exportCSV} style={{ padding: "12px 20px", background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 8, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>⬇ Participants CSV</button>
-              <button onClick={exportProfilesCSV} disabled={!profiles.length} style={{ padding: "12px 20px", background: "transparent", border: `1px solid ${T.blue}`, borderRadius: 8, color: T.blue, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: profiles.length ? 1 : 0.5 }}>⬇ Blueprint CSV</button>
-              <button onClick={exportProfilesExcel} disabled={!profiles.length} style={{ padding: "12px 20px", background: "transparent", border: `1px solid ${T.orange}`, borderRadius: 8, color: T.orange, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: profiles.length ? 1 : 0.5 }}>⬇ Blueprint Excel</button>
-            </div>
-            <div style={{ fontSize: 12, color: T.muted, marginTop: 10 }}>Participant et administrateur peuvent extraire les fiches profil participant en CSV/Excel.</div>
-          </div>
-        )}
-        </>}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
 // MAIN APP
-// ══════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [theme, setTheme] = useState(() => LS.get("dbr_theme") || "dark");
   const T = THEMES[theme];
@@ -1042,7 +49,9 @@ export default function App() {
     if (user) {
       const s = LS.get(`dbr_sess_${user.email}`);
       if (s && s.msgs?.length > 0) setSavedSession(s);
-      setPastSessions(LS.get(`dbr_all_sessions_${user.email}`) || []);
+      let past = LS.get(`dbr_all_sessions_${user.email}`) || [];
+      if (past.length > 20) { past = past.slice(-20); LS.set(`dbr_all_sessions_${user.email}`, past); }
+      setPastSessions(past);
     }
   }, [user]);
 
@@ -1064,12 +73,40 @@ export default function App() {
       .catch(() => {});
   }, [user]);
 
-  // Update body background on theme change
-  useEffect(() => { document.body.style.background = T.bg; }, [T.bg]);
+  // Update body background + data-theme on theme change
+  useEffect(() => { document.body.style.background = T.bg; document.documentElement.dataset.theme = theme; }, [T.bg, theme]);
+
+  // Warn before closing tab during active session
+  useEffect(() => {
+    const handler = (e) => { if (screen === "program" && msgs.length > 0) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [screen, msgs.length]);
+
+  // Check token expiry â€” warn 30min before and auto-logout when expired
+  const [tokenWarning, setTokenWarning] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    const check = () => {
+      if (isTokenExpired()) { handleLogout(); return; }
+      const remaining = tokenExpiresIn();
+      setTokenWarning(remaining > 0 && remaining < 30 * 60 * 1000);
+    };
+    check();
+    const id = setInterval(check, 60000);
+    return () => clearInterval(id);
+  }, [user]);
+
+  // Close modals with Escape key
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") { if (showCopilotPrompt) { handleCopilotSave(true); } if (showJ1Prompt) { setShowJ1Prompt(false); setJ1DateInput(""); } } };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showCopilotPrompt, showJ1Prompt]);
 
   const bloc = blocs[bi], q = bloc?.questions[qi];
   const lastMsg = msgs[msgs.length - 1];
-  const isValidated = lastMsg?.role === "assistant" && (lastMsg.content?.includes("✓ Solide") || lastMsg.content?.includes("✓ solide"));
+  const isValidated = lastMsg?.role === "assistant" && (lastMsg.content?.includes("âœ“ Solide") || lastMsg.content?.includes("âœ“ solide"));
   const answerKey = bloc && q ? `${bloc.id}_${q.id}` : null;
   const alreadyAnswered = !!(answerKey && answersRef.current[answerKey]);
 
@@ -1093,10 +130,10 @@ export default function App() {
         setBlueprintSaveMsg(data.error || "Erreur de sauvegarde Blueprint.");
       } else {
         setBlueprint(payload);
-        setBlueprintSaveMsg("✓ Blueprint enregistré.");
+        setBlueprintSaveMsg("âœ“ Blueprint enregistrÃ©.");
       }
     } catch {
-      setBlueprintSaveMsg("Erreur réseau pendant la sauvegarde.");
+      setBlueprintSaveMsg("Erreur rÃ©seau pendant la sauvegarde.");
     }
     setBlueprintSaving(false);
     setTimeout(() => setBlueprintSaveMsg(""), 2600);
@@ -1107,14 +144,21 @@ export default function App() {
   function doSave(alsoServer) { if (!user || screen === "auth") return; const s = buildSave(); LS.set(`dbr_sess_${user.email}`, s); setSavedOk(true); setTimeout(() => setSavedOk(false), 2000); if (alsoServer || Date.now() - serverSaveRef.current > 30000) { serverSaveRef.current = Date.now(); fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "save", session: s }) }).catch(() => {}); } }
   useEffect(() => { if (screen === "program" && msgs.length > 0) { const t = setTimeout(() => doSave(false), 1500); return () => clearTimeout(t); } }, [msgs, screen]);
 
-  async function callClaude(userMsg) {
+  async function callClaude(userMsg, retries = 1) {
     const hist = [...apiHistRef.current, { role: "user", content: userMsg }];
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system: SYSTEM, messages: hist })
     });
-    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Erreur serveur (" + res.status + ")"); }
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if (retries > 0 && (res.status >= 500 || res.status === 429)) {
+        await new Promise(r => setTimeout(r, 2000));
+        return callClaude(userMsg, retries - 1);
+      }
+      throw new Error(d.error || "Erreur serveur (" + res.status + ")");
+    }
     const data = await res.json();
     const text = data.content?.find(b => b.type === "text")?.text || "Erreur.";
     const newH = [...hist, { role: "assistant", content: text }];
@@ -1128,21 +172,21 @@ export default function App() {
     setLoading(true);
     addMsg({ role: "user", content: text, audio: isAudio });
     try {
-      const r = await callClaude(`[BLOC ${bloc.id} — ${bloc.label} | ${q.title}]\n\nRéponse :\n"${text}"\n\nAnalyse selon le protocole DBR. IMPORTANT : termine par "✓ Solide." UNIQUEMENT si la réponse est suffisamment précise et profonde. Sinon pose UNE question de précision.`);
+      const r = await callClaude(`[BLOC ${bloc.id} â€” ${bloc.label} | ${q.title}]\n\nRÃ©ponse :\n"${text}"\n\nAnalyse selon le protocole DBR. IMPORTANT : termine par "âœ“ Solide." UNIQUEMENT si la rÃ©ponse est suffisamment prÃ©cise et profonde. Sinon pose UNE question de prÃ©cision.`);
       const newA = { ...answersRef.current, [answerKey]: text }; setAnswers(newA); answersRef.current = newA;
       if (answerKey === "5P_5P1") {
         setBlueprint((p) => ({ ...p, dream_root: p.dream_root || text.trim() }));
       }
       addMsg({ role: "assistant", content: r });
-    } catch (e) { addMsg({ role: "assistant", content: e.message || "Une erreur s'est produite. Réessaie." }); }
+    } catch (e) { addMsg({ role: "assistant", content: e.message || "Une erreur s'est produite. RÃ©essaie." }); }
     setLoading(false);
   }
 
   async function submitFollowUp(text, isAudio = false) {
     if (!text.trim() || loading) return; setLoading(true);
     addMsg({ role: "user", content: text, audio: isAudio });
-    try { const r = await callClaude(`[Précision sur ${q?.title}]\n"${text}"\n\nContinue. Si suffisant : "✓ Solide." Sinon : UNE question de précision.`); addMsg({ role: "assistant", content: r }); }
-    catch (e) { addMsg({ role: "assistant", content: e.message || "Erreur. Réessaie." }); }
+    try { const r = await callClaude(`[PrÃ©cision sur ${q?.title}]\n"${text}"\n\nContinue. Si suffisant : "âœ“ Solide." Sinon : UNE question de prÃ©cision.`); addMsg({ role: "assistant", content: r }); }
+    catch (e) { addMsg({ role: "assistant", content: e.message || "Erreur. RÃ©essaie." }); }
     setLoading(false);
   }
 
@@ -1163,10 +207,10 @@ export default function App() {
     const prevKey = `${pBloc.id}_${pQ.id}`, prevAnswer = answersRef.current[prevKey] || "";
     setInput(prevAnswer);
     if (pbi !== bi) setValidated(p => { const n = { ...p }; delete n[pBloc.id]; return n; });
-    const note = `**← Retour : ${pQ.title}**\n\n${pQ.q}${prevAnswer ? "\n\n*Ta réponse précédente est pré-remplie — modifie-la librement.*" : ""}`;
+    const note = `**â† Retour : ${pQ.title}**\n\n${pQ.q}${prevAnswer ? "\n\n*Ta rÃ©ponse prÃ©cÃ©dente est prÃ©-remplie â€” modifie-la librement.*" : ""}`;
     const m = { role: "assistant", content: note };
-    setMsgs(p => [...p, { role: "user", content: "← Retour." }, m]);
-    setApiHist(p => { const n = [...p, { role: "user", content: "← Retour." }, { role: "assistant", content: note }]; apiHistRef.current = n; return n; });
+    setMsgs(p => [...p, { role: "user", content: "â† Retour." }, m]);
+    setApiHist(p => { const n = [...p, { role: "user", content: "â† Retour." }, { role: "assistant", content: note }]; apiHistRef.current = n; return n; });
     setTimeout(() => { taRef.current?.focus(); }, 100);
   }
 
@@ -1178,14 +222,14 @@ export default function App() {
       const updated = { ...blueprint, copilot_name: name, copilot_contact: contact, updated_at: Date.now() };
       setBlueprint(updated);
       try { await fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "upsert", profile: { ...updated, email: user.email } }) }); } catch {}
-      const m = { role: "assistant", content: `**Co-Pilote enregistré : ${name}** ✓\n\nC'est la personne de confiance qui aura la responsabilité de renseigner ta fiche de suivi quotidien avec toi. On continue !` };
+      const m = { role: "assistant", content: `**Co-Pilote enregistrÃ© : ${name}** âœ“\n\nC'est la personne de confiance qui aura la responsabilitÃ© de renseigner ta fiche de suivi quotidien avec toi. On continue !` };
       addMsg(m); setApiHist(p => { const n = [...p, { role: "assistant", content: m.content }]; apiHistRef.current = n; return n; });
     }
     const nbi = pendingBlocIdx; setPendingBlocIdx(null); setCopilotDraft({ name: "", contact: "" });
     if (nbi !== null && nbi < blocs.length) {
       setBi(nbi); setQi(0);
       const nb = blocs[nbi], nq = nb.questions[0];
-      const intro = `---\n**BLOC ${nb.id} — ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
+      const intro = `---\n**BLOC ${nb.id} â€” ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
       addMsg({ role: "assistant", content: intro });
       setApiHist(p => { const n = [...p, { role: "assistant", content: intro }]; apiHistRef.current = n; return n; });
     } else if (nbi !== null) { await genConclusion(); }
@@ -1195,10 +239,10 @@ export default function App() {
     setLoading(true);
     const blocAnswers = Object.entries(answersRef.current).filter(([k]) => k.startsWith(bloc.id + "_")).map(([, v]) => v.slice(0, 400)).join("\n\n---\n\n");
     try {
-      const r = await callClaude(`[SYNTHÈSE BLOC ${bloc.id} — ${bloc.label}]\n\nRéponses :\n${blocAnswers}\n\nSynthèse concise (4-5 phrases). 1 force + 1 vigilance.${bloc.id === "C" ? ' Formule le domino : "Je [verbe] [problème] pour [bénéficiaire] via [format]."' : ""} Termine : "Est-ce que cette synthèse te semble juste ?"`);
+      const r = await callClaude(`[SYNTHÃˆSE BLOC ${bloc.id} â€” ${bloc.label}]\n\nRÃ©ponses :\n${blocAnswers}\n\nSynthÃ¨se concise (4-5 phrases). 1 force + 1 vigilance.${bloc.id === "C" ? ' Formule le domino : "Je [verbe] [problÃ¨me] pour [bÃ©nÃ©ficiaire] via [format]."' : ""} Termine : "Est-ce que cette synthÃ¨se te semble juste ?"`);
       setSyntheses(p => ({ ...p, [bloc.id]: r }));
-      addMsg({ role: "assistant", content: `---\n**SYNTHÈSE · ${bloc.label}**\n\n${r}`, synth: true }); setShowSynth(true);
-    } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la synthèse : " + (e.message || "Réessaie.") }); }
+      addMsg({ role: "assistant", content: `---\n**SYNTHÃˆSE Â· ${bloc.label}**\n\n${r}`, synth: true }); setShowSynth(true);
+    } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la synthÃ¨se : " + (e.message || "RÃ©essaie.") }); }
     setLoading(false);
   }
 
@@ -1206,28 +250,28 @@ export default function App() {
     setShowSynth(false);
     if (ok) {
       setValidated(p => ({ ...p, [bloc.id]: true }));
-      addMsg({ role: "user", content: "✓ Cette synthèse me semble juste." });
-      setApiHist(p => { const n = [...p, { role: "user", content: "✓ Synthèse validée." }]; apiHistRef.current = n; return n; });
+      addMsg({ role: "user", content: "âœ“ Cette synthÃ¨se me semble juste." });
+      setApiHist(p => { const n = [...p, { role: "user", content: "âœ“ SynthÃ¨se validÃ©e." }]; apiHistRef.current = n; return n; });
       if (bloc.id === "A") { setPendingBlocIdx(bi + 1); setCopilotDraft({ name: blueprint.copilot_name || "", contact: blueprint.copilot_contact || "" }); setShowCopilotPrompt(true); return; }
       const nbi = bi + 1;
       if (nbi < blocs.length) {
         setBi(nbi); setQi(0); const nb = blocs[nbi], nq = nb.questions[0];
-        const intro = `---\n**BLOC ${nb.id} — ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
+        const intro = `---\n**BLOC ${nb.id} â€” ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
         addMsg({ role: "assistant", content: intro });
         setApiHist(p => { const n = [...p, { role: "assistant", content: intro }]; apiHistRef.current = n; return n; });
       } else { await genConclusion(); }
     } else {
       const m = { role: "assistant", content: "Dis-moi ce qui ne te semble pas juste. On ajuste ensemble." };
-      setMsgs(p => [...p, { role: "user", content: "Je veux préciser quelque chose." }, m]);
-      setApiHist(p => { const n = [...p, { role: "user", content: "Je veux préciser." }, { role: "assistant", content: m.content }]; apiHistRef.current = n; return n; });
+      setMsgs(p => [...p, { role: "user", content: "Je veux prÃ©ciser quelque chose." }, m]);
+      setApiHist(p => { const n = [...p, { role: "user", content: "Je veux prÃ©ciser." }, { role: "assistant", content: m.content }]; apiHistRef.current = n; return n; });
     }
   }
 
   async function genConclusion() {
     setLoading(true); setScreen("conclusion");
-    const summary = blocsRef.current.map(b => { const ba = Object.entries(answersRef.current).filter(([k]) => k.startsWith(b.id + "_")).map(([, v]) => v.slice(0, 300)).join(" / "); const bs = syntheses[b.id] ? syntheses[b.id].slice(0, 200) : ""; return `BLOC ${b.id} (${b.label}):\n${ba}\nSynthèse: ${bs}`; }).join("\n\n");
+    const summary = blocsRef.current.map(b => { const ba = Object.entries(answersRef.current).filter(([k]) => k.startsWith(b.id + "_")).map(([, v]) => v.slice(0, 300)).join(" / "); const bs = syntheses[b.id] ? syntheses[b.id].slice(0, 200) : ""; return `BLOC ${b.id} (${b.label}):\n${ba}\nSynthÃ¨se: ${bs}`; }).join("\n\n");
     try {
-      const r = await callClaude(`[CONCLUSION FINALE — MÉTHODE CHARITÉ — Compagnon ${APP_NAME}]\n\n${summary}\n\nGénère une conclusion puissante :\n1. La conclusion choisie (1 à 4) et pourquoi\n2. La formule du rêve racine\n3. Le programme adapté (plan 90j en 3 phases 30/30/30 avec jalons concrets en FCFA)\n4. Message personnel ancré dans le contexte ivoirien\n\nProse fluide, 350 mots max. Commence par "CONCLUSION [N] : [titre]".`);
+      const r = await callClaude(`[CONCLUSION FINALE â€” MÃ‰THODE CHARITÃ‰ â€” Compagnon ${APP_NAME}]\n\n${summary}\n\nGÃ©nÃ¨re une conclusion puissante :\n1. La conclusion choisie (1 Ã  4) et pourquoi\n2. La formule du rÃªve racine\n3. Le programme adaptÃ© (plan 90j en 3 phases 30/30/30 avec jalons concrets en FCFA)\n4. Message personnel ancrÃ© dans le contexte ivoirien\n\nProse fluide, 350 mots max. Commence par "CONCLUSION [N] : [titre]".`);
       addMsg({ role: "assistant", content: r, conc: true });
       // Save to multi-sessions
       const session = buildSave();
@@ -1240,14 +284,14 @@ export default function App() {
       // Save completed session to server
       fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "save", session }) }).catch(() => {});
       setShowJ1Prompt(true);
-    } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la conclusion : " + (e.message || "Réessaie.") }); }
+    } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la conclusion : " + (e.message || "RÃ©essaie.") }); }
     setLoading(false);
   }
 
   function download() {
     try {
-      const lines = msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `Réel — Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
-      const full = `PARCOURS DBR — MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"═".repeat(50)}\n\n${lines}`;
+      const lines = msgs.map(m => { if (m.sys) return `\n${"â•".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `RÃ©el â€” Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
+      const full = `PARCOURS DBR â€” MÃ‰THODE CHARITÃ‰\nCompagnon : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"â•".repeat(50)}\n\n${lines}`;
       const blob = new Blob([full], { type: "text/plain;charset=utf-8" });
       const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${APP_NAME}_${user.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.txt` });
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -1261,16 +305,16 @@ export default function App() {
     const chosenBlocs = knowsDream ? [BLOC_5P, BLOC_VISION, ...BLOCS_RITE] : [...BLOCS_CHA, BLOC_5P, BLOC_VISION, ...BLOCS_RITE];
     setBlocs(chosenBlocs); blocsRef.current = chosenBlocs;
     const b0 = chosenBlocs[0], q0 = b0.questions[0];
-    const path = knowsDream ? "5 Pourquoi → Vision → RITE" : "CHA → 5 Pourquoi → Vision → RITE";
-    const intro = `${user.name}, je suis Réel, ton Compagnon. Ce que tu t'apprêtes à vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?
+    const path = knowsDream ? "5 Pourquoi â†’ Vision â†’ RITE" : "CHA â†’ 5 Pourquoi â†’ Vision â†’ RITE";
+    const intro = `${user.name}, je suis RÃ©el, ton Compagnon. Ce que tu t'apprÃªtes Ã  vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?
 
 Ton parcours : **${path}**.
 
-Chaque question est là pour creuser. Réponds honnêtement, pas parfaitement. Y'a moyen !
+Chaque question est lÃ  pour creuser. RÃ©ponds honnÃªtement, pas parfaitement. Y'a moyen !
 
 ---
 
-**BLOC ${b0.id} — ${b0.label}**
+**BLOC ${b0.id} â€” ${b0.label}**
 *${b0.desc}*
 
 ---
@@ -1309,7 +353,7 @@ ${q0.q}`;
   const pct = screen === "conclusion" ? 100 : Math.round((doneQ / totalQ) * 100);
 
   // Theme toggle button
-  const themeBtn = <button onClick={toggleTheme} title={theme === "dark" ? "Mode clair" : "Mode sombre"} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "4px 10px", color: T.muted, cursor: "pointer", fontSize: 16 }}>{theme === "dark" ? "☀️" : "🌙"}</button>;
+  const themeBtn = <button onClick={toggleTheme} title={theme === "dark" ? "Mode clair" : "Mode sombre"} style={{ background: "none", border: `1px solid ${T.border}`, borderRadius: 6, padding: "4px 10px", color: T.muted, cursor: "pointer", fontSize: 16 }}>{theme === "dark" ? "â˜€ï¸" : "ðŸŒ™"}</button>;
 
   // AUTH
   if (!user) return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Auth onLogin={handleLogin} /></ThemeCtx.Provider>;
@@ -1348,21 +392,21 @@ ${q0.q}`;
             <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "32px 24px" }}>
               <div style={{ fontSize: 17, fontWeight: 600, color: T.text, marginBottom: 6 }}>Parcours en cours</div>
               <div style={{ fontSize: 13, color: T.muted, marginBottom: 24, lineHeight: 1.7 }}>
-                Dernier arrêt · {savedSession.blocLabel} — {savedSession.qTitle}<br />
+                Dernier arrÃªt Â· {savedSession.blocLabel} â€” {savedSession.qTitle}<br />
                 {savedSession.savedAt && new Date(savedSession.savedAt).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
               </div>
-              <button onClick={() => resumeSession(savedSession)} style={{ width: "100%", padding: 15, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" }}>Reprendre où j'en étais →</button>
+              <button onClick={() => resumeSession(savedSession)} style={{ width: "100%", padding: 15, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" }}>Reprendre oÃ¹ j'en Ã©tais â†’</button>
               <button onClick={() => { setSavedSession(null); setScreen("aiguillage"); }} style={{ width: "100%", padding: 13, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Recommencer un nouveau parcours</button>
-              {pastSessions.length > 0 && <button onClick={() => setShowHistory(!showHistory)} style={{ width: "100%", marginTop: 8, padding: 11, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Mes parcours passés ({pastSessions.length})</button>}
-              <button onClick={() => openBlueprint("intro")} style={{ width: "100%", marginTop: 8, padding: 11, background: "rgba(74,184,232,0.08)", border: `1px solid rgba(74,184,232,0.2)`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>📘 Mon Blueprint 90 jours</button>
+              {pastSessions.length > 0 && <button onClick={() => setShowHistory(!showHistory)} style={{ width: "100%", marginTop: 8, padding: 11, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>ðŸ—‚ï¸ Mes parcours passÃ©s ({pastSessions.length})</button>}
+              <button onClick={() => openBlueprint("intro")} style={{ width: "100%", marginTop: 8, padding: 11, background: "rgba(74,184,232,0.08)", border: `1px solid rgba(74,184,232,0.2)`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>ðŸ“˜ Mon Blueprint 90 jours</button>
               {showHistory && pastSessions.map((s, i) => (
                 <div key={i} onClick={() => resumeSession(s)} style={{ marginTop: 8, padding: "12px 16px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, cursor: "pointer", fontSize: 13, color: T.textDim }}>
-                  <strong style={{ color: T.text }}>{s.blocLabel}</strong> — {s.qTitle}<br />
-                  <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(s.savedAt)} · {s.phase === "conclusion" ? "✓ Complété" : "En cours"}</span>
+                  <strong style={{ color: T.text }}>{s.blocLabel}</strong> â€” {s.qTitle}<br />
+                  <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(s.savedAt)} Â· {s.phase === "conclusion" ? "âœ“ ComplÃ©tÃ©" : "En cours"}</span>
                 </div>
               ))}
-              {user.isAdmin && <button onClick={() => setShowAdmin(true)} style={{ width: "100%", marginTop: 10, padding: 11, background: "rgba(232,84,10,0.08)", border: `1px solid rgba(232,84,10,0.2)`, borderRadius: 10, fontSize: 13, color: T.orange, cursor: "pointer", fontFamily: "inherit" }}>⚙ Console Admin</button>}
-              <button onClick={handleLogout} style={{ width: "100%", marginTop: 10, background: "none", border: "none", fontSize: 12, color: T.muted, cursor: "pointer", fontFamily: "inherit", opacity: 0.5 }}>Se déconnecter</button>
+              {user.isAdmin && <button onClick={() => setShowAdmin(true)} style={{ width: "100%", marginTop: 10, padding: 11, background: "rgba(232,84,10,0.08)", border: `1px solid rgba(232,84,10,0.2)`, borderRadius: 10, fontSize: 13, color: T.orange, cursor: "pointer", fontFamily: "inherit" }}>âš™ Console Admin</button>}
+              <button onClick={handleLogout} style={{ width: "100%", marginTop: 10, background: "none", border: "none", fontSize: 12, color: T.muted, cursor: "pointer", fontFamily: "inherit", opacity: 0.5 }}>Se dÃ©connecter</button>
             </div>
           </div>
         </div>
@@ -1384,14 +428,15 @@ ${q0.q}`;
                 <Logo size={30} />
                 <span style={{ fontSize: 11, color: T.muted, letterSpacing: "2px" }}>COMPAGNON {APP_NAME.toUpperCase()}</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                {savedOk && <span style={{ fontSize: 10, color: T.green }}>✓ Sauvé</span>}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {tokenWarning && <span style={{ fontSize: 10, color: T.red, fontWeight: 600 }}>âš  Session expire bientÃ´t</span>}
+                {savedOk && <span style={{ fontSize: 10, color: T.green }}>âœ“ SauvÃ©</span>}
                 {themeBtn}
                 <button onClick={() => openBlueprint(screen)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Blueprint</button>
                 {user.isAdmin && <button onClick={() => setShowAdmin(true)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>}
-                <button onClick={() => { doSave(true); setScreen("intro"); }} style={{ padding: "4px 10px", background: "rgba(39,174,96,0.1)", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 6, fontSize: 11, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>🏠 Accueil</button>
-                <button onClick={handleLogout} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, fontSize: 11, color: T.red, cursor: "pointer", fontFamily: "inherit", opacity: 0.8 }}>Déconnexion</button>
-                <button onClick={download} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⬇ Script</button>
+                <button onClick={() => { doSave(true); setScreen("intro"); }} style={{ padding: "4px 10px", background: "rgba(39,174,96,0.1)", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 6, fontSize: 11, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>ðŸ </button>
+                <button onClick={handleLogout} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, fontSize: 11, color: T.red, cursor: "pointer", fontFamily: "inherit", opacity: 0.8 }}>â†ª</button>
+                <button onClick={download} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>â¬‡</button>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 90, height: 7, background: T.border, borderRadius: 4, overflow: "hidden", position: "relative" }}>
                     <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg,${T.orange},${T.blue})`, borderRadius: 4, transition: "width 0.6s ease", boxShadow: pct > 0 ? "0 0 8px rgba(232,84,10,0.4)" : "none" }} />
@@ -1414,7 +459,7 @@ ${q0.q}`;
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontSize: 9, color: done || active ? "#fff" : T.muted, fontWeight: 700,
                           transition: "all 0.3s", boxShadow: active ? "0 0 10px rgba(232,84,10,0.4)" : "none",
-                        }}>{done ? "✓" : ""}</div>
+                        }}>{done ? "âœ“" : ""}</div>
                         <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.5px", marginTop: 2, color: active ? T.orange : done ? T.green : T.muted, opacity: i > bi ? 0.35 : 1, whiteSpace: "nowrap" }}>
                           {b.id === "V" ? "VIS" : b.id === "5P" ? "5P" : b.id}
                         </div>
@@ -1434,32 +479,32 @@ ${q0.q}`;
           {loading && (
             <div style={{ display: "flex", gap: 6, padding: "18px 48px", alignItems: "center" }}>
               <Logo size={20} />
-              <span style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>{APP_NAME} réfléchit</span>
+              <span style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>{APP_NAME} rÃ©flÃ©chit</span>
               {[0, 1, 2].map(j => <div key={j} style={{ width: 5, height: 5, borderRadius: "50%", background: j % 2 === 0 ? T.orange : T.blue, animation: `bounce 1.2s ease-in-out ${j * 0.2}s infinite` }} />)}
               <style>{`@keyframes bounce{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`}</style>
             </div>
           )}
           {showSynth && !loading && (
             <div style={{ display: "flex", gap: 10, padding: "8px 0" }}>
-              <button onClick={() => validateSynth(true)} style={{ flex: 1, padding: 14, background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓ Je valide</button>
-              <button onClick={() => validateSynth(false)} style={{ flex: 1, padding: 14, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✎ Préciser</button>
+              <button onClick={() => validateSynth(true)} style={{ flex: 1, padding: 14, background: `linear-gradient(135deg,${T.green},#1e8449)`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>âœ“ Je valide</button>
+              <button onClick={() => validateSynth(false)} style={{ flex: 1, padding: 14, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>âœŽ PrÃ©ciser</button>
             </div>
           )}
           {showCopilotPrompt && !loading && (
             <div style={{ margin: "12px 0", background: T.card, border: `2px solid ${T.orange}`, borderRadius: 14, padding: "20px 18px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 20 }}>👥</span>
+                <span style={{ fontSize: 20 }}>ðŸ‘¥</span>
                 <span style={{ fontSize: 15, fontWeight: 700, color: T.orange }}>Ton Co-Pilote</span>
               </div>
               <div style={{ fontSize: 13, color: T.muted, marginBottom: 14, lineHeight: 1.65 }}>
-                Qui dans ton entourage aura la responsabilité de renseigner ta fiche de suivi quotidien <em>avec</em> toi ? C’est la personne qui te connaît, qui t’observera et te demandera des comptes.
+                Qui dans ton entourage aura la responsabilitÃ© de renseigner ta fiche de suivi quotidien <em>avec</em> toi ? Câ€™est la personne qui te connaÃ®t, qui tâ€™observera et te demandera des comptes.
               </div>
               <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-                <input value={copilotDraft.name} onChange={e => setCopilotDraft(p => ({ ...p, name: e.target.value }))} placeholder="Nom & Prénom du Co-Pilote" style={{ width: "100%", padding: "11px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }} onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
-                <input value={copilotDraft.contact} onChange={e => setCopilotDraft(p => ({ ...p, contact: e.target.value }))} placeholder="Téléphone ou contact" style={{ width: "100%", padding: "11px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }} onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
+                <input value={copilotDraft.name} onChange={e => setCopilotDraft(p => ({ ...p, name: e.target.value }))} placeholder="Nom & PrÃ©nom du Co-Pilote" style={{ width: "100%", padding: "11px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }} onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
+                <input value={copilotDraft.contact} onChange={e => setCopilotDraft(p => ({ ...p, contact: e.target.value }))} placeholder="TÃ©lÃ©phone ou contact" style={{ width: "100%", padding: "11px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, boxSizing: "border-box", outline: "none", fontFamily: "inherit" }} onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.inputBorder} />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => handleCopilotSave(false)} disabled={!copilotDraft.name.trim()} style={{ flex: 1, padding: "12px", background: copilotDraft.name.trim() ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: copilotDraft.name.trim() ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: copilotDraft.name.trim() ? 1 : 0.5 }}>Enregistrer et continuer →</button>
+                <button onClick={() => handleCopilotSave(false)} disabled={!copilotDraft.name.trim()} style={{ flex: 1, padding: "12px", background: copilotDraft.name.trim() ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: copilotDraft.name.trim() ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: copilotDraft.name.trim() ? 1 : 0.5 }}>Enregistrer et continuer â†’</button>
                 <button onClick={() => handleCopilotSave(true)} style={{ padding: "12px 16px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Passer</button>
               </div>
             </div>
@@ -1471,28 +516,28 @@ ${q0.q}`;
         {screen === "program" && !showSynth && !showCopilotPrompt && (
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.card, borderTop: `1px solid ${T.border}`, padding: "12px 16px 16px", boxShadow: `0 -8px 32px ${T.shadow}`, zIndex: 50 }}>
             <div style={{ maxWidth: 780, margin: "0 auto" }}>
-              {sp.listening && <div style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 13, color: T.orange, display: "flex", gap: 8, alignItems: "center" }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: T.red, animation: "bounce 1s infinite" }} />{sp.liveText || "Je t'écoute…"}</div>}
-              {micBlocked && <div style={{ background: "rgba(231,76,60,0.06)", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, padding: "8px 12px", marginBottom: 8, fontSize: 13, color: T.red }}>🎤 Autorise le micro dans les paramètres du navigateur.</div>}
-              {q && !isValidated && !sp.listening && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
+              {sp.listening && <div style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 13, color: T.orange, display: "flex", gap: 8, alignItems: "center" }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: T.red, animation: "bounce 1s infinite" }} />{sp.liveText || "Je t'Ã©couteâ€¦"}</div>}
+              {micBlocked && <div style={{ background: "rgba(231,76,60,0.06)", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, padding: "8px 12px", marginBottom: 8, fontSize: 13, color: T.red }}>ðŸŽ¤ Autorise le micro dans les paramÃ¨tres du navigateur.</div>}
+              {q && !isValidated && !sp.listening && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>ðŸ’¡ {q.hint}</div>}
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question précédente"
-                  style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>←</button>
+                <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question prÃ©cÃ©dente"
+                  style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>â†</button>
                 <textarea ref={taRef} value={sp.listening ? sp.liveText : input}
                   onClick={() => { if (sp.listening) { const final = sp.stopListen(); setInput(final || sp.liveText || ""); } }}
                   onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px"; }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (loading) return; if (isValidated) { nextQ(); } else { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); } } }}
-                  placeholder={sp.listening ? "Tape ici pour éditer…" : q?.ph || "Écris ta réponse…"}
+                  placeholder={sp.listening ? "Tape ici pour Ã©diterâ€¦" : q?.ph || "Ã‰cris ta rÃ©ponseâ€¦"}
                   readOnly={false} disabled={loading}
                   style={{ flex: 1, padding: "12px 14px", background: T.inputBg, border: `1.5px solid ${T.border}`, borderRadius: 8, fontSize: 15, lineHeight: 1.6, resize: "none", height: 48, minHeight: 48, maxHeight: 140, fontFamily: "inherit", outline: "none", color: T.text, boxSizing: "border-box" }}
                   onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.border} />
-                {sp.hasSR && <button onClick={toggleMic} disabled={loading} style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", background: sp.listening ? T.red : "rgba(74,184,232,0.12)", color: sp.listening ? "#FFFFFF" : T.blue, fontSize: 20 }}>{sp.listening ? "⏹" : "🎤"}</button>}
+                {sp.hasSR && <button onClick={toggleMic} disabled={loading} style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", background: sp.listening ? T.red : "rgba(74,184,232,0.12)", color: sp.listening ? "#FFFFFF" : T.blue, fontSize: 20 }}>{sp.listening ? "â¹" : "ðŸŽ¤"}</button>}
                 <button onClick={() => { if (isValidated) nextQ(); else handleSend(); }}
                   disabled={loading || (!input.trim() && !isValidated && !sp.listening)}
                   style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", fontSize: 20, background: isValidated ? `linear-gradient(135deg,${T.green},#1e8449)` : (loading || (!input.trim() && !sp.listening)) ? T.cardBg : `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#FFFFFF" }}>
-                  {isValidated ? "→" : "↑"}
+                  {isValidated ? "â†’" : "â†‘"}
                 </button>
               </div>
-              {isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME} — ajoute une précision ou clique → pour continuer</div>}
+              {isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>âœ“ RÃ©ponse validÃ©e par {APP_NAME} â€” ajoute une prÃ©cision ou clique â†’ pour continuer</div>}
             </div>
           </div>
         )}
@@ -1501,8 +546,8 @@ ${q0.q}`;
         {screen === "conclusion" && showJ1Prompt && !loading && (
           <div style={{ position: "fixed", bottom: 72, left: 0, right: 0, zIndex: 60, padding: "0 16px" }}>
             <div style={{ maxWidth: 780, margin: "0 auto", background: T.card, border: `2px solid ${T.orange}`, borderRadius: 14, padding: "16px 18px", boxShadow: `0 -8px 32px ${T.shadow}` }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>📅 Date de début J1</div>
-              <div style={{ fontSize: 13, color: T.muted, marginBottom: 10 }}>Fixe ta date de démarrage officielle — le premier jour de ton sprint de 7 jours.</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>ðŸ“… Date de dÃ©but J1</div>
+              <div style={{ fontSize: 13, color: T.muted, marginBottom: 10 }}>Fixe ta date de dÃ©marrage officielle â€” le premier jour de ton sprint de 7 jours.</div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input type="date" value={j1DateInput} onChange={e => setJ1DateInput(e.target.value)} style={{ flex: 1, padding: "10px 12px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, outline: "none", fontFamily: "inherit" }} />
                 <button onClick={() => { if (!j1DateInput) return; const upd = { ...blueprint, start_date_j1: j1DateInput, updated_at: Date.now() }; setBlueprint(upd); setShowJ1Prompt(false); setJ1DateInput(""); fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "upsert", profile: { ...upd, email: user.email } }) }).catch(() => {}); }} disabled={!j1DateInput} style={{ padding: "10px 20px", background: j1DateInput ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: j1DateInput ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: j1DateInput ? 1 : 0.5 }}>Enregistrer J1</button>
@@ -1515,8 +560,8 @@ ${q0.q}`;
         {screen === "conclusion" && !loading && (
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.card, borderTop: `1px solid ${T.border}`, padding: "14px 16px", boxShadow: `0 -8px 32px ${T.shadow}` }}>
             <div style={{ maxWidth: 780, margin: "0 auto", display: "flex", gap: 10 }}>
-              <button onClick={download} style={{ flex: 1, padding: 14, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>⬇ Télécharger mon parcours</button>
-              <button onClick={() => openBlueprint("conclusion")} style={{ padding: 14, background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 8, color: T.blue, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>📘 Blueprint</button>
+              <button onClick={download} style={{ flex: 1, padding: 14, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>â¬‡ TÃ©lÃ©charger mon parcours</button>
+              <button onClick={() => openBlueprint("conclusion")} style={{ padding: 14, background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 8, color: T.blue, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>ðŸ“˜ Blueprint</button>
               <button onClick={() => { setScreen("intro"); setSavedSession(null); LS.del(`dbr_sess_${user.email}`); }} style={{ padding: 14, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Accueil</button>
             </div>
           </div>

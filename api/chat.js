@@ -1,20 +1,39 @@
-// Rate limiting simple par IP
-const rateLimitMap = new Map();
-function checkRateLimit(ip) {
+import { createClient } from '@supabase/supabase-js'
+import { cors } from './_cors.js'
+
+const supabase = (() => {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+})();
+
+// Persistent rate limiting via Supabase
+const WINDOW_MS = 60 * 1000;
+const MAX_REQUESTS = 30;
+
+async function checkRateLimit(ip) {
+  if (!supabase) return true; // If no DB, allow (fallback)
   const now = Date.now();
-  const windowMs = 60 * 1000;
-  const maxRequests = 30;
-  const entry = rateLimitMap.get(ip) || { count: 0, start: now };
-  if (now - entry.start > windowMs) { rateLimitMap.set(ip, { count: 1, start: now }); return true; }
-  if (entry.count >= maxRequests) return false;
-  entry.count++; rateLimitMap.set(ip, entry); return true;
+  try {
+    const { data } = await supabase.from('dbr_rate_limits').select('count, window_start').eq('ip', ip).maybeSingle();
+    if (!data || now - data.window_start > WINDOW_MS) {
+      await supabase.from('dbr_rate_limits').upsert({ ip, count: 1, window_start: now }, { onConflict: 'ip' });
+      return true;
+    }
+    if (data.count >= MAX_REQUESTS) return false;
+    await supabase.from('dbr_rate_limits').update({ count: data.count + 1 }).eq('ip', ip);
+    return true;
+  } catch {
+    return true; // On error, allow request
+  }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
-  if (!checkRateLimit(ip)) return res.status(429).json({ error: 'Trop de requêtes. Attends une minute.' });
+  if (!(await checkRateLimit(ip))) return res.status(429).json({ error: 'Trop de requêtes. Attends une minute.' });
 
   const { max_tokens, messages, system, model } = req.body;
   if (!messages || !Array.isArray(messages) || messages.length === 0)
@@ -54,3 +73,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Erreur serveur' });
   }
 }
+
+export default cors(handler);

@@ -1,181 +1,89 @@
 -- ═══════════════════════════════════════════════════════════
--- DBR CHARITÉ V8 — Schéma amélioré
+-- DBR CHARITÉ V9 — Schéma de production
+-- Tables utilisées par les API routes Vercel
 -- ═══════════════════════════════════════════════════════════
 
--- 1. TABLE PROFILS
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+-- 1. TABLE UTILISATEURS
+create table if not exists public.dbr_users (
+  id bigint generated always as identity primary key,
   email text unique not null,
   name text not null,
-  role text not null default 'participant' check (role in ('admin', 'participant', 'moderator')),
-  avatar_url text,
-  invited_by uuid references public.profiles(id) on delete set null,
-  is_active boolean default true,
-  last_login_at timestamptz,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  password_hash text not null,
+  role text not null default 'participant',
+  is_admin boolean default false,
+  created_at bigint default (extract(epoch from now()) * 1000)::bigint,
+  reset_token text,
+  reset_token_expires bigint
 );
 
--- 2. TABLE INVITATIONS
-create table if not exists public.invitations (
-  id uuid primary key default gen_random_uuid(),
-  email text not null,
+-- 2. TABLE CODES D'INVITATION
+create table if not exists public.dbr_codes (
+  id bigint generated always as identity primary key,
   code text unique not null,
-  invited_by uuid not null references public.profiles(id) on delete cascade,
-  used boolean default false,
-  used_by uuid references public.profiles(id) on delete set null,
-  used_at timestamptz,
-  expires_at timestamptz default now() + interval '30 days',
-  created_at timestamptz default now()
+  role text not null default 'participant',
+  for_email text,
+  used_by text,
+  created_by text,
+  expires_at bigint,
+  created_at bigint default (extract(epoch from now()) * 1000)::bigint
 );
 
 -- 3. TABLE SESSIONS
-create table if not exists public.sessions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
+create table if not exists public.dbr_sessions (
+  id bigint generated always as identity primary key,
+  email text not null references public.dbr_users(email) on delete cascade,
   msgs jsonb default '[]' not null,
   blocs jsonb default '[]' not null,
-  bi integer default 0 check (bi >= 0),
-  qi integer default 0 check (qi >= 0),
+  bi integer default 0,
+  qi integer default 0,
   answers jsonb default '{}' not null,
   syntheses jsonb default '{}' not null,
   validated jsonb default '{}' not null,
   api_hist jsonb default '[]' not null,
   bloc_label text,
   q_title text,
-  phase text default 'program' check (phase in ('program', 'diagnosis', 'analysis', 'conclusion')),
-  path_type text default 'CHA' check (path_type in ('CHA', 'BRA', 'EXP')),
-  total_time integer default 0 check (total_time >= 0),
-  completed_at timestamptz,
-  updated_at timestamptz default now(),
-  created_at timestamptz default now()
+  phase text default 'program',
+  total_time integer default 0,
+  saved_at bigint,
+  completed_at bigint
 );
 
--- 4. TABLE BILANS
-create table if not exists public.bilans (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  session_id uuid not null references public.sessions(id) on delete cascade,
-  status text not null default 'pending' check (status in ('pending', 'in_progress', 'completed', 'archived')),
-  due_date timestamptz not null default now() + interval '7 days',
-  completed_at timestamptz,
-  notes text,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now(),
-  unique (user_id, session_id)
-);
-
--- 5. TABLE LOGS ADMIN
-create table if not exists public.admin_logs (
-  id uuid primary key default gen_random_uuid(),
-  admin_id uuid not null references public.profiles(id) on delete set null,
-  action text not null,
-  resource_type text not null,
-  target_id uuid,
-  changes jsonb default '{}' not null,
-  created_at timestamptz default now()
-);
-
--- 6. INDICES POUR PERFORMANCE
-create index if not exists idx_profiles_email on public.profiles(email);
-create index if not exists idx_profiles_role on public.profiles(role);
-create index if not exists idx_sessions_user_id on public.sessions(user_id);
-create index if not exists idx_sessions_phase on public.sessions(phase);
-create index if not exists idx_bilans_user_id on public.bilans(user_id);
-create index if not exists idx_bilans_status on public.bilans(status);
-create index if not exists idx_invitations_code on public.invitations(code);
-
--- 7. ACTIVER RLS
-alter table public.profiles enable row level security;
-alter table public.invitations enable row level security;
-alter table public.sessions enable row level security;
-alter table public.bilans enable row level security;
-alter table public.admin_logs enable row level security;
-
--- 8. POLITIQUES (PERMISSIONS)
-drop policy if exists "profiles_select_own" on public.profiles;
-create policy "profiles_select_own" on public.profiles
-  for select using (auth.uid() = id);
-
-drop policy if exists "profiles_select_admin" on public.profiles;
-create policy "profiles_select_admin" on public.profiles
-  for select using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
-
-drop policy if exists "profiles_insert_own" on public.profiles;
-create policy "profiles_insert_own" on public.profiles
-  for insert with check (auth.uid() = id);
-
-drop policy if exists "sessions_select_own" on public.sessions;
-create policy "sessions_select_own" on public.sessions
-  for select using (auth.uid() = user_id);
-
-drop policy if exists "sessions_select_admin" on public.sessions;
-create policy "sessions_select_admin" on public.sessions
-  for select using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
-
-drop policy if exists "sessions_insert_own" on public.sessions;
-create policy "sessions_insert_own" on public.sessions
-  for insert with check (auth.uid() = user_id);
-
-drop policy if exists "bilans_select_own" on public.bilans;
-create policy "bilans_select_own" on public.bilans
-  for select using (auth.uid() = user_id);
-
-drop policy if exists "bilans_select_admin" on public.bilans;
-create policy "bilans_select_admin" on public.bilans
-  for select using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
-
-drop policy if exists "logs_select_admin" on public.admin_logs;
-create policy "logs_select_admin" on public.admin_logs
-  for select using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
-
--- 9. TRIGGER - Créer profil automatiquement
-drop trigger if exists on_auth_user_created on auth.users;
-drop function if exists public.handle_new_user();
-
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, email, name, role, created_at, updated_at)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-    coalesce(new.raw_user_meta_data->>'role', 'participant'),
-    now(),
-    now()
-  )
-  on conflict (id) do update set updated_at = now();
-  
-  return new;
-end;
-$$ language plpgsql security definer set search_path = public;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
-
--- 10. TABLE BLUEPRINT PARTICIPANT (API /api/participant-profile)
+-- 4. TABLE PROFILS PARTICIPANTS (BLUEPRINT)
 create table if not exists public.dbr_participant_profiles (
-  email text primary key,
+  id bigint generated always as identity primary key,
+  email text unique not null references public.dbr_users(email) on delete cascade,
+  participant_name text,
   dream_root text,
-  discipline_minutes text check (discipline_minutes in ('30', '45', '60')),
+  discipline_minutes text,
   meeting_time text,
   fallback_time text,
   start_date_j1 text,
-  parcours_dbr text check (parcours_dbr in ('CHA', 'RITE')),
-  accompagnement_mode text check (accompagnement_mode in ('REEL', 'B2B', 'DUO')),
+  parcours_dbr text,
+  accompagnement_mode text,
   copilot_name text,
   copilot_contact text,
-  status text default 'SPRINT' check (status in ('SPRINT', 'ACTIF', 'PAUSE', 'TERMINE')),
-  micro_action_1 text,
-  micro_action_2 text,
-  micro_action_3 text,
+  status text default 'SPRINT',
   return_rule text,
-  sprint_notes jsonb default '{}'::jsonb,
-  updated_at bigint default (extract(epoch from now()) * 1000)::bigint,
-  created_at timestamptz default now()
+  sprint_notes jsonb default '{}',
+  updated_at bigint
 );
 
-create index if not exists idx_dbr_participant_profiles_updated_at
-  on public.dbr_participant_profiles(updated_at desc);
+-- 5. TABLE RATE LIMITING
+create table if not exists public.dbr_rate_limits (
+  ip text primary key,
+  count integer not null default 0,
+  window_start bigint not null
+);
+
+-- 6. INDICES POUR PERFORMANCE
+create index if not exists idx_dbr_users_email on public.dbr_users(email);
+create index if not exists idx_dbr_sessions_email on public.dbr_sessions(email);
+create index if not exists idx_dbr_sessions_phase on public.dbr_sessions(phase);
+create index if not exists idx_dbr_sessions_completed on public.dbr_sessions(completed_at);
+create index if not exists idx_dbr_codes_code on public.dbr_codes(code);
+create index if not exists idx_dbr_profiles_email on public.dbr_participant_profiles(email);
+create index if not exists idx_dbr_rate_limits_window on public.dbr_rate_limits(window_start);
+
+-- NOTE : L'application utilise le service_role key côté API (Vercel serverless).
+-- RLS n'est pas activé sur ces tables car l'accès est contrôlé par les API routes.
+-- Si vous activez RLS, ajoutez les politiques appropriées.

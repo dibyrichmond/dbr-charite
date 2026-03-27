@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { verifyToken } from './_token.js'
+import { cors } from './_cors.js'
 
 const supabase = (() => {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -75,7 +76,7 @@ function sanitizePayload(payload) {
   };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!supabase) return res.status(500).json({ error: 'Base de donnees non configuree.' });
 
@@ -127,3 +128,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Erreur serveur: ' + (err.message || 'inconnue') });
   }
 }
+
+export default cors(handler);

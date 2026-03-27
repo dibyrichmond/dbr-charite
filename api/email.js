@@ -1,11 +1,12 @@
 import { verifyToken } from './_token.js'
+import { cors } from './_cors.js'
 
 // Validation email basique
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length < 200;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const cronSecret = process.env.CRON_SECRET;
@@ -29,7 +30,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: 'Réel — Compagnon DBR <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM_EMAIL || 'Réel — Compagnon DBR <onboarding@resend.dev>',
         to: Array.isArray(to) ? to : [to],
         subject,
         html,
@@ -42,3 +43,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Erreur envoi email' });
   }
 }
+
+export default cors(handler);

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { escapeHtml } from './_token.js'
+import { cors } from './_cors.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SUPABASE_SERVICE_KEY =
@@ -11,7 +12,7 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   : null
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -26,8 +27,8 @@ export default async function handler(req, res) {
     const window = new Date(thirtyDaysAgo.getTime() - 86400000)
 
     const { data: sessions } = await supabase
-      .from('sessions')
-      .select('*, profiles(*)')
+      .from('dbr_sessions')
+      .select('*')
       .eq('phase', 'conclusion')
       .gte('completed_at', window.toISOString())
       .lte('completed_at', thirtyDaysAgo.toISOString())
@@ -35,24 +36,21 @@ export default async function handler(req, res) {
     if (!sessions?.length) return res.status(200).json({ message: 'No sessions due' })
 
     const { data: admins } = await supabase
-      .from('profiles').select('email, name').eq('role', 'admin')
+      .from('dbr_users').select('email, name').eq('is_admin', true)
 
     const appUrl = process.env.VITE_APP_URL || 'https://dbr-charite.vercel.app'
 
     for (const session of sessions) {
-      const participant = session.profiles
-      if (!participant) continue
+      const email = session.email
+      if (!email) continue
 
-      await supabase.from('bilans').insert({
-        user_id: participant.id,
-        session_id: session.id,
-        status: 'pending',
-        due_date: new Date().toISOString(),
-      })
+      const { data: participant } = await supabase
+        .from('dbr_users').select('name, email').eq('email', email).maybeSingle()
+      if (!participant) continue
 
       const safeName = escapeHtml(participant.name || '')
       const safeEngage = escapeHtml((session.answers?.R_R1 || '').slice(0, 150))
-      const html = `<!DOCTYPE html><html><body style="background:#0D0D0D;font-family:system-ui;padding:40px 24px;"><div style="max-width:560px;margin:0 auto;"><div style="text-align:center;margin-bottom:24px;"><div style="font-size:22px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div></div><div style="background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:32px;"><div style="font-size:18px;font-weight:700;color:#F0F0F0;margin-bottom:16px;">Ton bilan du mois, ${safeName} 🎯</div>${lastEngage ? `<div style="font-size:13px;color:#8A8A8A;margin-bottom:16px;padding:12px;background:rgba(74,184,232,0.08);border-left:3px solid #4AB8E8;border-radius:4px;">Il y a 30 jours tu t'étais engagé à : <strong style="color:#F0F0F0;">${safeEngage}</strong></div>` : ''}<div style="font-size:14px;color:#AAAAAA;line-height:1.8;margin-bottom:24px;">15 minutes avec toi-même. Réel t'attend là où tu t'es arrêté.</div><a href="${appUrl}" style="display:block;text-align:center;padding:14px;background:linear-gradient(135deg,#E8540A,#C4420A);border-radius:10px;color:#fff;font-weight:700;font-size:15px;text-decoration:none;">Faire mon bilan →</a></div></div></body></html>`
+      const html = `<!DOCTYPE html><html><body style="background:#0D0D0D;font-family:system-ui;padding:40px 24px;"><div style="max-width:560px;margin:0 auto;"><div style="text-align:center;margin-bottom:24px;"><div style="font-size:22px;font-weight:900;letter-spacing:6px;color:#E8540A;">DBR</div></div><div style="background:#1A1A1A;border:1px solid rgba(232,84,10,0.3);border-radius:16px;padding:32px;"><div style="font-size:18px;font-weight:700;color:#F0F0F0;margin-bottom:16px;">Ton bilan du mois, ${safeName} 🎯</div>${safeEngage ? `<div style="font-size:13px;color:#8A8A8A;margin-bottom:16px;padding:12px;background:rgba(74,184,232,0.08);border-left:3px solid #4AB8E8;border-radius:4px;">Il y a 30 jours tu t'étais engagé à : <strong style="color:#F0F0F0;">${safeEngage}</strong></div>` : ''}<div style="font-size:14px;color:#AAAAAA;line-height:1.8;margin-bottom:24px;">15 minutes avec toi-même. Réel t'attend là où tu t'es arrêté.</div><a href="${appUrl}" style="display:block;text-align:center;padding:14px;background:linear-gradient(135deg,#E8540A,#C4420A);border-radius:10px;color:#fff;font-weight:700;font-size:15px;text-decoration:none;">Faire mon bilan →</a></div></div></body></html>`
 
       await fetch(`${appUrl}/api/email`, {
         method: 'POST',
@@ -73,3 +71,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Erreur serveur' })
   }
 }
+
+export default cors(handler);

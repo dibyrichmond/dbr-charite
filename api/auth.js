@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { createToken, hashPassword, verifyPassword, isLegacyHash } from './_token.js'
+import { cors } from './_cors.js'
 
 const supabase = (() => {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -12,7 +13,7 @@ function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length < 200;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!supabase) return res.status(500).json({ error: 'Base de données non configurée. Configure SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY.' });
 
@@ -151,3 +152,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Erreur serveur: ' + (err.message || 'inconnue') });
   }
 }
+
+export default cors(handler);
