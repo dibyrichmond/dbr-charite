@@ -69,6 +69,11 @@ function sanitizePayload(payload) {
     status: cleanChoice(String(p.status || ''), STATUT_VALUES),
     return_rule: cleanText(p.return_rule, 1000),
     sprint_notes: typeof p.sprint_notes === 'object' && p.sprint_notes ? p.sprint_notes : {},
+    singularity_phrase: cleanText(p.singularity_phrase, 2000),
+    engagements_proches: cleanText(p.engagements_proches, 3000),
+    ritual_trigger: cleanText(p.ritual_trigger, 500),
+    ritual_duration: cleanText(p.ritual_duration, 200),
+    ritual_output: cleanText(p.ritual_output, 500),
     updated_at: Date.now(),
   };
 }
@@ -259,6 +264,80 @@ async function handler(req, res) {
 
       if (error) return res.status(500).json({ error: 'Erreur mise a jour.' });
       return res.status(200).json({ success: true });
+    }
+
+    // Store moments de vérité (extracted after each bloc validation) — table moments_verite required
+    if (action === 'store-moments') {
+      const session_id = typeof req.body?.session_id === 'string' ? req.body.session_id.trim().slice(0, 100) : null;
+      const bloc_label = typeof req.body?.bloc_label === 'string' ? req.body.bloc_label.trim().slice(0, 50) : null;
+      const moments = Array.isArray(req.body?.moments) ? req.body.moments : [];
+      if (!session_id || !bloc_label) return res.status(400).json({ error: 'session_id et bloc_label requis.' });
+      const rows = moments.map(m => ({
+        session_id,
+        user_id: auth.email,
+        bloc_label,
+        contenu_texte: String(m.texte || '').slice(0, 1000),
+        type_moment: String(m.type || '').slice(0, 50),
+        timestamp: Date.now()
+      }));
+      if (rows.length > 0) {
+        const { error } = await supabase.from('moments_verite').insert(rows);
+        // code 42P01 = table doesn't exist yet — silent fail
+        if (error && error.code !== '42P01') return res.status(500).json({ error: 'Erreur stockage moments.' });
+      }
+      return res.status(200).json({ success: true });
+    }
+
+    // Get moments de vérité for a session (injected at conclusion)
+    if (action === 'get-moments') {
+      const session_id = typeof req.body?.session_id === 'string' ? req.body.session_id.trim().slice(0, 100) : null;
+      if (!session_id) return res.status(400).json({ error: 'session_id requis.' });
+      const { data, error } = await supabase
+        .from('moments_verite')
+        .select('bloc_label, contenu_texte, type_moment, timestamp')
+        .eq('session_id', session_id)
+        .eq('user_id', auth.email)
+        .order('timestamp', { ascending: true });
+      if (error && error.code === '42P01') return res.status(200).json({ moments: [] });
+      if (error) return res.status(500).json({ error: 'Erreur lecture moments.' });
+      return res.status(200).json({ moments: data || [] });
+    }
+
+    // Store satisfaction score for a bloc — table satisfaction_blocs required
+    if (action === 'store-satisfaction') {
+      const session_id = typeof req.body?.session_id === 'string' ? req.body.session_id.trim().slice(0, 100) : null;
+      const bloc_label = typeof req.body?.bloc_label === 'string' ? req.body.bloc_label.trim().slice(0, 50) : null;
+      const rawScore = req.body?.score;
+      const score = (rawScore !== null && rawScore !== undefined) ? parseInt(rawScore) : null;
+      const parcours_type = typeof req.body?.parcours_type === 'string' ? req.body.parcours_type.trim().slice(0, 10) : 'CHA';
+      if (!session_id || !bloc_label) return res.status(400).json({ error: 'session_id et bloc_label requis.' });
+      const row = {
+        session_id,
+        user_id: auth.email,
+        bloc_label,
+        score: score !== null && !isNaN(score) && score >= 0 && score <= 10 ? score : null,
+        parcours_type,
+        timestamp: Date.now()
+      };
+      const { error } = await supabase.from('satisfaction_blocs').insert(row);
+      if (error && error.code !== '42P01') return res.status(500).json({ error: 'Erreur stockage satisfaction.' });
+      return res.status(200).json({ success: true });
+    }
+
+    // Admin: get satisfaction scores for a given user — requires admin role
+    if (action === 'admin-get-satisfaction') {
+      const adminOk = await isAdmin(auth.email);
+      if (!adminOk) return res.status(403).json({ error: 'Accès refusé.' });
+      const targetEmail = typeof req.body?.targetEmail === 'string' ? req.body.targetEmail.trim().toLowerCase().slice(0, 200) : null;
+      if (!targetEmail) return res.status(400).json({ error: 'targetEmail requis.' });
+      const { data, error } = await supabase
+        .from('satisfaction_blocs')
+        .select('session_id, bloc_label, score, timestamp')
+        .eq('user_id', targetEmail)
+        .order('timestamp', { ascending: true });
+      if (error && error.code === '42P01') return res.status(200).json({ scores: [] });
+      if (error) return res.status(500).json({ error: 'Erreur lecture satisfaction.' });
+      return res.status(200).json({ scores: data || [] });
     }
 
     return res.status(400).json({ error: 'Action invalide.' });

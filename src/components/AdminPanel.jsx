@@ -23,6 +23,8 @@ export default function Admin({ user, onBack }) {
   const [bpComment, setBpComment] = useState("");
   const [bpSending, setBpSending] = useState(false);
   const [bpMsg, setBpMsg] = useState("");
+  const [satisfactionScores, setSatisfactionScores] = useState([]);
+  const [satLoading, setSatLoading] = useState(false);
 
   const WEEK = 7 * 24 * 3600 * 1000;
   const isExpired = (c) => c.expires_at && Date.now() > c.expires_at;
@@ -46,6 +48,13 @@ export default function Admin({ user, onBack }) {
   }
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    if (!bpView) { setSatisfactionScores([]); return; }
+    setSatLoading(true);
+    fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "admin-get-satisfaction", targetEmail: bpView }) })
+      .then(r => r.json()).then(d => setSatisfactionScores(d.scores || [])).catch(() => setSatisfactionScores([])).finally(() => setSatLoading(false));
+  }, [bpView]);
 
   const stats = {
     total: allUsers.length,
@@ -466,7 +475,40 @@ export default function Admin({ user, onBack }) {
                   </div>
                 </div>
 
-                {/* Section 4: Espace d'echange */}
+                {/* Section 4: Satisfaction par bloc */}
+                <div style={card}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 14 }}>⭐ Satisfaction par bloc (session)</div>
+                  {satLoading && <div style={{ fontSize: 13, color: T.muted }}>Chargement...</div>}
+                  {!satLoading && satisfactionScores.length === 0 && <div style={{ fontSize: 13, color: T.muted, fontStyle: "italic" }}>Aucune donnée de satisfaction enregistrée.</div>}
+                  {!satLoading && satisfactionScores.length > 0 && (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {satisfactionScores.map((s, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: T.cardBg, borderRadius: 8, gap: 12 }}>
+                          <span style={{ fontSize: 13, color: T.text, flex: 1 }}>{s.bloc_label || s.bloc_id || "Bloc inconnu"}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {s.score !== null && s.score !== undefined ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <div style={{ width: 80, height: 6, background: T.border, borderRadius: 3, overflow: "hidden" }}>
+                                  <div style={{ width: `${(s.score / 10) * 100}%`, height: "100%", background: s.score >= 7 ? "#27AE60" : s.score >= 4 ? "#F39C12" : "#E74C3C", borderRadius: 3, transition: "width 0.3s" }} />
+                                </div>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: s.score >= 7 ? "#27AE60" : s.score >= 4 ? "#F39C12" : "#E74C3C", minWidth: 28 }}>{s.score}/10</span>
+                              </div>
+                            ) : <span style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>Passé</span>}
+                            <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{s.timestamp ? fmtDate(s.timestamp) : ""}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {(() => {
+                        const scored = satisfactionScores.filter(s => s.score !== null && s.score !== undefined);
+                        if (scored.length === 0) return null;
+                        const avg = (scored.reduce((a, b) => a + b.score, 0) / scored.length).toFixed(1);
+                        return <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(232,84,10,0.06)", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontSize: 13, color: T.muted }}>Moyenne de satisfaction</span><span style={{ fontSize: 16, fontWeight: 700, color: T.orange }}>{avg} / 10</span></div>;
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 5: Espace d'echange */}
                 <div style={card}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: T.orange, marginBottom: 14 }}>💬 Espace d'échange</div>
                   <div style={{ marginBottom: 14, display: "grid", gap: 10 }}>
@@ -498,7 +540,7 @@ export default function Admin({ user, onBack }) {
                   {bpMsg && <div style={{ marginTop: 8, fontSize: 12, color: bpMsg.startsWith("✓") ? T.green : T.red, fontWeight: 500 }}>{bpMsg}</div>}
                 </div>
 
-                {/* Section 5: Validation */}
+                {/* Section 6: Validation */}
                 <div style={{ ...card, borderColor: p.admin_validated ? "rgba(39,174,96,0.4)" : "rgba(232,84,10,0.3)" }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: p.admin_validated ? T.green : T.orange, marginBottom: 10 }}>
                     {p.admin_validated ? "✓ Blueprint validé" : "Validation du Blueprint"}

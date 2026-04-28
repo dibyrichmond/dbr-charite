@@ -80,7 +80,18 @@ create table if not exists public.dbr_rate_limits (
   window_start bigint not null
 );
 
--- 6. INDICES POUR PERFORMANCE
+-- 6. ACTIVER RLS SUR TOUTES LES TABLES
+alter table public.dbr_users enable row level security;
+alter table public.dbr_codes enable row level security;
+alter table public.dbr_sessions enable row level security;
+alter table public.dbr_participant_profiles enable row level security;
+alter table public.dbr_rate_limits enable row level security;
+
+-- NOTE : L'application utilise le service_role key côté API (Vercel serverless).
+-- Le service_role bypass automatiquement le RLS.
+-- Aucune policy n'est nécessaire car le client anon n'accède jamais directement aux tables.
+
+-- 7. INDICES POUR PERFORMANCE
 create index if not exists idx_dbr_users_email on public.dbr_users(email);
 create index if not exists idx_dbr_sessions_email on public.dbr_sessions(email);
 create index if not exists idx_dbr_sessions_phase on public.dbr_sessions(phase);
@@ -88,7 +99,3 @@ create index if not exists idx_dbr_sessions_completed on public.dbr_sessions(com
 create index if not exists idx_dbr_codes_code on public.dbr_codes(code);
 create index if not exists idx_dbr_profiles_email on public.dbr_participant_profiles(email);
 create index if not exists idx_dbr_rate_limits_window on public.dbr_rate_limits(window_start);
-
--- NOTE : L'application utilise le service_role key côté API (Vercel serverless).
--- RLS n'est pas activé sur ces tables car l'accès est contrôlé par les API routes.
--- Si vous activez RLS, ajoutez les politiques appropriées.

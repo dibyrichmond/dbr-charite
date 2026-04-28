@@ -1,16 +1,22 @@
 # DBR CHARITÉ v6.0
 
-Application web interactive pour la **Méthode CHARITÉ** — Permettre aux personnes ambitieuses de réaliser leurs rêves par la discipline et les petites actions répétées.
+Application web interactive pour la méthode CHARITÉ.
 
 ## 🎯 Qu'est-ce que DBR CHARITÉ?
 
-DBR = **Diagnostic • Bilan • Recommandations**
+DBR - Dream Becomes Reality
 
-CHARITÉ = Une **méthode progressive** basée sur :
-- 💪 La discipline
-- 🔄 Les actions répétées
-- 📈 Les petits pas
-- 🎯 L'objectif clair
+DBR accompagne entrepreneurs, cadres et jeunes talents a transformer ce qu'ils portent en silence en une realite qu'ils embrassent.
+
+Son compagnon de parcours s'appelle Reel.
+
+La methode CHARITE en 8 etapes : Clarifier, Honorer, Aligner, Renoncer, Installer, Tenir, Eprouver.
+
+Deux parcours disponibles selon le profil du participant.
+Parcours complet pour celui qui cherche encore sa direction.
+Parcours accelere pour celui qui a deja une idee et veut un plan d'action.
+
+DBR existe pour une seule raison : que ni le reve ni les moments qui comptent ne restent prisonniers de toi.
 
 ## 🚀 Fonctionnalités
 

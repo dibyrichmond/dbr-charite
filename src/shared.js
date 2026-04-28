@@ -47,6 +47,11 @@ export function emptyBlueprint(email = "", name = "") {
     email,
     participant_name: name,
     dream_root: "",
+    singularity_phrase: "",
+    engagements_proches: "",
+    ritual_trigger: "",
+    ritual_duration: "",
+    ritual_output: "",
     discipline_minutes: "",
     meeting_time: "",
     fallback_time: "",
@@ -92,8 +97,10 @@ export function downloadCSV(filename, rows) {
   const body = rows.map((r) => headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(","));
   const csv = [headers.join(","), ...body].join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: filename });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function downloadExcel(filename, rows) {
@@ -107,6 +114,8 @@ export function downloadExcel(filename, rows) {
   const table = `<table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${headers.map((h) => `<td>${esc(r[h])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   const html = `<html><head><meta charset="UTF-8" /></head><body>${table}</body></html>`;
   const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: filename });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

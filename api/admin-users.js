@@ -30,7 +30,7 @@ async function handler(req, res) {
     // ── LIST USERS ──
     if (action === 'list') {
       const { data, error } = await supabase
-        .from('dbr_users').select('*').order('created_at', { ascending: false });
+        .from('dbr_users').select('id, email, name, role, is_admin, created_at, approved').order('created_at', { ascending: false });
       if (error) return res.status(500).json({ error: 'Erreur lecture utilisateurs.' });
       return res.status(200).json({ users: data || [] });
     }

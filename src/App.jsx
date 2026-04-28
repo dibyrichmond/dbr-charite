@@ -34,12 +34,29 @@ export default function App() {
   const [showCopilotPrompt, setShowCopilotPrompt] = useState(false);
   const [pendingBlocIdx, setPendingBlocIdx] = useState(null);
   const [copilotDraft, setCopilotDraft] = useState({ name: "", contact: "" });
-  const [showJ1Prompt, setShowJ1Prompt] = useState(false);
-  const [j1DateInput, setJ1DateInput] = useState("");
+  const [preBlueprintReady, setPreBlueprintReady] = useState(false);
+  const [satisfactionPhase, setSatisfactionPhase] = useState(null);
+  const [satisfactionNext, setSatisfactionNext] = useState(null);
+  const [awaitingSingularity, setAwaitingSingularity] = useState(false);
+  const [conclusionDone, setConclusionDone] = useState(false);
+  const sessionIdRef = useRef(null);
   const [startTime] = useState(Date.now());
   const sp = useSpeech();
   const endRef = useRef(null), taRef = useRef(null);
   const answersRef = useRef({}), apiHistRef = useRef([]), blocsRef = useRef([]);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const MILESTONES = {
+    C: "Tu viens de nommer ce qui t'anime vraiment. Ce n'est pas rien.",
+    H: "Tu viens d'accepter le prix réel. C'est ce que peu de gens font vraiment.",
+    A: "Tu viens de mesurer l'écart honnêtement. La clarté commence ici.",
+    "5P": "Tu viens de toucher quelque chose que tu portais sans le savoir. Garde ça.",
+    V: "Tu viens de rendre ton rêve réel dans ta tête et dans ton corps. Ce que tu as vu ne s'efface pas.",
+    R: "Tu viens de choisir. Choisir, c'est créer la puissance.",
+    I: "Tu viens de poser les fondations. Un rituel simple qui tient vaut mieux qu'un plan complexe qui s'abandonne.",
+    T: "Tu as planifié le retour avant la chute. C'est ça, la vraie discipline.",
+    "É": "Tu as un plan de preuve. Dans 7 jours tu sauras si ton rêve survit au réel.",
+  };
 
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { apiHistRef.current = apiHist; }, [apiHist]);
@@ -99,10 +116,17 @@ export default function App() {
 
   // Close modals with Escape key
   useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape") { if (showCopilotPrompt) { handleCopilotSave(true); } if (showJ1Prompt) { setShowJ1Prompt(false); setJ1DateInput(""); } } };
+    const handler = (e) => { if (e.key === "Escape") { if (showCopilotPrompt) { handleCopilotSave(true); } } };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showCopilotPrompt, showJ1Prompt]);
+  }, [showCopilotPrompt]);
+
+  useEffect(() => {
+    if (screen !== "preblueprint") return;
+    setPreBlueprintReady(false);
+    const id = setTimeout(() => setPreBlueprintReady(true), 10000);
+    return () => clearTimeout(id);
+  }, [screen]);
 
   const bloc = blocs[bi], q = bloc?.questions[qi];
   const lastMsg = msgs[msgs.length - 1];
@@ -112,7 +136,10 @@ export default function App() {
 
   function handleLogin(u) { setUser(u); setScreen("intro"); }
   function handleLogout() { LS.del("dbr_token"); LS.del("dbr_current_user"); setUser(null); setScreen("auth"); setShowAdmin(false); }
-  function openBlueprint(fromScreen) { setBlueprintReturn(fromScreen); setScreen("blueprint"); }
+  function openBlueprint(fromScreen) {
+    setBlueprintReturn(fromScreen);
+    setScreen(fromScreen === "conclusion" ? "preblueprint" : "blueprint");
+  }
 
   async function saveBlueprint() {
     if (!user) return;
@@ -184,6 +211,41 @@ export default function App() {
 
   const addMsg = (m) => setMsgs(p => [...p, m]);
 
+  function pushAssistant(content, extra = {}) {
+    const m = { role: "assistant", content, ...extra };
+    addMsg(m);
+    setApiHist((p) => {
+      const n = [...p, { role: "assistant", content: m.content }];
+      apiHistRef.current = n;
+      return n;
+    });
+  }
+
+  async function showMilestone(blocId) {
+    const text = MILESTONES[blocId];
+    if (!text) return;
+    pushAssistant(text, { milestone: true });
+    await wait(3000);
+  }
+
+  async function showVisionBridge() {
+    pushAssistant("Tu viens de voir quelque chose de vrai.");
+    await wait(1000);
+    pushAssistant("Maintenant on va transformer cette image en décision.");
+    await wait(1000);
+    pushAssistant("C'est un mouvement différent. Je suis là.");
+    await wait(2000);
+  }
+
+  function openBlocAt(index) {
+    setBi(index);
+    setQi(0);
+    const nb = blocsRef.current[index];
+    const nq = nb.questions[0];
+    const intro = `---\n**BLOC ${nb.id} · ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
+    pushAssistant(intro);
+  }
+
   async function submitAnswer(text, isAudio = false) {
     if (!text.trim() || loading) return;
     setLoading(true);
@@ -244,11 +306,7 @@ export default function App() {
     }
     const nbi = pendingBlocIdx; setPendingBlocIdx(null); setCopilotDraft({ name: "", contact: "" });
     if (nbi !== null && nbi < blocs.length) {
-      setBi(nbi); setQi(0);
-      const nb = blocs[nbi], nq = nb.questions[0];
-      const intro = `---\n**BLOC ${nb.id} · ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
-      addMsg({ role: "assistant", content: intro });
-      setApiHist(p => { const n = [...p, { role: "assistant", content: intro }]; apiHistRef.current = n; return n; });
+      openBlocAt(nbi);
     } else if (nbi !== null) { await genConclusion(); }
   }
 
@@ -266,17 +324,33 @@ export default function App() {
   async function validateSynth(ok) {
     setShowSynth(false);
     if (ok) {
+      const currentBloc = bloc;
+      const currentBi = bi;
       setValidated(p => ({ ...p, [bloc.id]: true }));
       addMsg({ role: "user", content: "✓ Cette synthèse me semble juste." });
       setApiHist(p => { const n = [...p, { role: "user", content: "✓ Synthèse validée." }]; apiHistRef.current = n; return n; });
-      if (bloc.id === "A") { setPendingBlocIdx(bi + 1); setCopilotDraft({ name: blueprint.copilot_name || "", contact: blueprint.copilot_contact || "" }); setShowCopilotPrompt(true); return; }
-      const nbi = bi + 1;
-      if (nbi < blocs.length) {
-        setBi(nbi); setQi(0); const nb = blocs[nbi], nq = nb.questions[0];
-        const intro = `---\n**BLOC ${nb.id} · ${nb.label}**\n*${nb.desc}*\n\n---\n\n**${nq.title}**\n\n${nq.q}`;
-        addMsg({ role: "assistant", content: intro });
-        setApiHist(p => { const n = [...p, { role: "assistant", content: intro }]; apiHistRef.current = n; return n; });
-      } else { await genConclusion(); }
+      setLoading(true);
+      await showMilestone(currentBloc.id);
+      setLoading(false);
+
+      // P1.4 — extract moments (async, non-blocking)
+      extractMomentsAsync(currentBloc.id);
+
+      // P1.8 — compute next action, ask satisfaction question
+      let next;
+      const nbi = currentBi + 1;
+      if (currentBloc.id === "A") {
+        next = { type: "copilot", nbi };
+      } else if (currentBloc.id === "V" && blocsRef.current[nbi]?.id === "R") {
+        next = { type: "vision", nbi };
+      } else if (nbi < blocsRef.current.length) {
+        next = { type: "bloc", nbi };
+      } else {
+        next = { type: "conclusion" };
+      }
+      setSatisfactionNext(next);
+      setSatisfactionPhase(currentBloc.id);
+      pushAssistant("Sur ce qu'on vient de faire ensemble, sur une échelle de 0 à 10, tu trouves ça utile ?", { satisfaction: true });
     } else {
       const m = { role: "assistant", content: "Dis-moi ce qui ne te semble pas juste. On ajuste ensemble." };
       setMsgs(p => [...p, { role: "user", content: "Je veux préciser quelque chose." }, m]);
@@ -287,20 +361,29 @@ export default function App() {
   async function genConclusion() {
     setLoading(true); setScreen("conclusion");
     const summary = blocsRef.current.map(b => { const ba = Object.entries(answersRef.current).filter(([k]) => k.startsWith(b.id + "_")).map(([, v]) => v.slice(0, 300)).join(" / "); const bs = syntheses[b.id] ? syntheses[b.id].slice(0, 200) : ""; return `BLOC ${b.id} (${b.label}):\n${ba}\nSynthèse: ${bs}`; }).join("\n\n");
+
+    // P1.4 — fetch stored moments de vérité
+    let momentsContext = "";
     try {
-      const r = await callClaude(`[CONCLUSION FINALE · Compagnon ${APP_NAME}]\n\n${summary}\n\nC'est le moment le plus important du parcours. Convoque les 3 moments de vérité les plus forts de ce parcours. Relie-les en une image cohérente. Utilise les mots exacts que le participant a prononcés, pas tes propres mots. Nomme ce qu'il porte maintenant qu'il ne portait pas en entrant.\n\nTermine par une phrase qui appartient uniquement à ce participant. Pas une formule. Quelque chose de vrai, de spécifique, d'inoubliable.\n\nProse fluide. Dis ce qui est juste. Pas plus. Pas moins.`);
+      const mRes = await fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "get-moments", session_id: sessionIdRef.current }) });
+      if (mRes.ok) {
+        const mData = await mRes.json();
+        if (mData.moments?.length > 0) {
+          momentsContext = "Moments de vérité identifiés pendant le parcours :\n" + mData.moments.map(m => `- [${m.bloc_label}] "${m.contenu_texte}" (${m.type_moment})`).join("\n") + "\n\n";
+        }
+      }
+    } catch {}
+
+    const conclusionPrompt = `[CONCLUSION FINALE · Compagnon ${APP_NAME}]\n\n${momentsContext}Résumé du parcours :\n${summary}\n\nGénère maintenant la conclusion en 3 temps (premier + deuxième + troisième).\n\nPremier temps : Convoque les moments de vérité les plus forts avec les mots exacts du participant. Relie-les en une image cohérente. Nomme ce qu'il porte maintenant.\n\nDeuxième temps : Une seule phrase exacte : "Et pendant que tu construis tout ça, il y a des gens qui méritent de te voir vivant, pas juste occupé."\n\nTroisième temps : Pose cette question exacte, rien d'autre après : "Avec tout ce qu'on a traversé ensemble, comment tu te définirais maintenant en une phrase imparfaite mais vraie ? Pas la version parfaite. Juste quelque chose qui sonne juste aujourd'hui."\n\nProse fluide. Dis ce qui est juste. Pas plus. Pas moins.`;
+    try {
+      const r = await callClaude(conclusionPrompt);
       addMsg({ role: "assistant", content: r, conc: true });
-      // Save to multi-sessions
       const session = buildSave();
-      session.phase = "conclusion";
-      session.completedAt = Date.now();
+      session.phase = "conclusion"; session.completedAt = Date.now();
       const past = LS.get(`dbr_all_sessions_${user.email}`) || [];
-      past.push(session);
-      LS.set(`dbr_all_sessions_${user.email}`, past);
-      setPastSessions(past);
-      // Save completed session to server
+      past.push(session); LS.set(`dbr_all_sessions_${user.email}`, past); setPastSessions(past);
       fetch("/api/sessions", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "save", session }) }).catch(() => {});
-      setShowJ1Prompt(true);
+      setAwaitingSingularity(true);
     } catch (e) { addMsg({ role: "assistant", content: "Erreur lors de la conclusion : " + (e.message || "Réessaie.") }); }
     setLoading(false);
   }
@@ -310,12 +393,93 @@ export default function App() {
       const lines = msgs.map(m => { if (m.sys) return `\n${"═".repeat(40)}\n${m.content}\n`; const who = m.role === "user" ? `${user.name}${m.audio ? " (audio)" : ""}` : `Réel, Compagnon DBR`; return `[${who}]\n${m.content}\n`; }).join("\n---\n\n");
       const full = `PARCOURS DBR · MÉTHODE CHARITÉ\nCompagnon : ${APP_NAME}\nParticipant : ${user.name} (${user.email})\nDate : ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}\n\n${"═".repeat(50)}\n\n${lines}`;
       const blob = new Blob([full], { type: "text/plain;charset=utf-8" });
-      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `DBR_${APP_NAME}_${user.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.txt` });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement("a"), { href: url, download: `DBR_${APP_NAME}_${user.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.txt` });
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch { alert("Copie le contenu manuellement."); }
   }
 
-  function startPath(knowsDream) {
+  // ── P1.4 · Extract moments de vérité after each bloc (fire-and-forget)
+  function extractMomentsAsync(blocId) {
+    if (!sessionIdRef.current) return;
+    const recentMsgs = apiHistRef.current.slice(-20)
+      .map(m => `[${m.role === "user" ? "Participant" : "Réel"}] ${m.content.slice(0, 300)}`)
+      .join("\n");
+    const prompt = `Voici l'échange du bloc ${blocId} :\n${recentMsgs}\n\nIdentifie les moments de vérité.\nUn moment de vérité est : une phrase dite avec émotion inhabituelle, une réponse qui a surpris, une peur nommée pour la première fois, une contradiction résolue.\n\nRéponds uniquement avec ce JSON valide :\n{"moments":[{"bloc":"${blocId}","texte":"phrase exacte du participant","type":"emotion|surprise|peur|contradiction"}]}\n\nSi aucun moment, retourne {"moments":[]}.`;
+    fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 600, system: "Tu extrais des moments de vérité d'un échange. Réponds uniquement en JSON valide.", messages: [{ role: "user", content: prompt }] })
+    }).then(r => r.ok ? r.json() : null).then(data => {
+      if (!data) return;
+      const text = data.content?.find(b => b.type === "text")?.text || "";
+      let parsed;
+      try { parsed = JSON.parse(text.trim().replace(/```json|```/g, "").trim()); } catch { return; }
+      if (!parsed?.moments?.length) return;
+      fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "store-moments", session_id: sessionIdRef.current, bloc_label: blocId, moments: parsed.moments }) }).catch(() => {});
+    }).catch(() => {});
+  }
+
+  // ── P1.8 · Satisfaction phase helpers
+  async function executeSatisfactionNext(next) {
+    if (!next) return;
+    if (next.type === "copilot") {
+      setPendingBlocIdx(next.nbi);
+      setCopilotDraft({ name: blueprint.copilot_name || "", contact: blueprint.copilot_contact || "" });
+      setShowCopilotPrompt(true);
+    } else if (next.type === "vision") {
+      setLoading(true);
+      try { await showVisionBridge(); openBlocAt(next.nbi); } finally { setLoading(false); }
+    } else if (next.type === "bloc") {
+      openBlocAt(next.nbi);
+    } else if (next.type === "conclusion") {
+      await genConclusion();
+    }
+  }
+
+  async function submitSatisfaction(text) {
+    if (loading) return;
+    addMsg({ role: "user", content: text });
+    setApiHist(p => { const n = [...p, { role: "user", content: text }]; apiHistRef.current = n; return n; });
+    const match = text.match(/\b([0-9]|10)\b/);
+    const score = match ? parseInt(match[0]) : null;
+    const savedBlocId = satisfactionPhase;
+    const savedNext = satisfactionNext;
+    setSatisfactionPhase(null); setSatisfactionNext(null);
+    fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "store-satisfaction", session_id: sessionIdRef.current, bloc_label: savedBlocId, score, parcours_type: blueprint.parcours_dbr || "CHA" }) }).catch(() => {});
+    await executeSatisfactionNext(savedNext);
+  }
+
+  function skipSatisfaction() {
+    const savedBlocId = satisfactionPhase;
+    const savedNext = satisfactionNext;
+    setSatisfactionPhase(null); setSatisfactionNext(null);
+    fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "store-satisfaction", session_id: sessionIdRef.current, bloc_label: savedBlocId, score: null, parcours_type: blueprint.parcours_dbr || "CHA" }) }).catch(() => {});
+    void executeSatisfactionNext(savedNext);
+  }
+
+  // ── P1.5 · Singularity phrase (3rd time of conclusion)
+  async function submitSingularity(text) {
+    if (!text.trim() || loading) return;
+    setAwaitingSingularity(false);
+    setLoading(true);
+    addMsg({ role: "user", content: text });
+    setApiHist(p => { const n = [...p, { role: "user", content: text }]; apiHistRef.current = n; return n; });
+    const updated = { ...blueprint, singularity_phrase: text.trim(), updated_at: Date.now() };
+    setBlueprint(updated);
+    fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "upsert", profile: { ...updated, email: user.email } }) }).catch(() => {});
+    try {
+      const r = await callClaude(`[CONCLUSION · TEMPS 4]\n\nPhrase de singularité du participant : "${text.trim()}"\n\nFormule maintenant UNE SEULE phrase finale qui lui appartient uniquement. Avec ses mots exacts de tout ce parcours. Si ce participant répète une seule chose demain, quelle phrase veux-tu que ce soit ? Pas une formule. Quelque chose de vrai, de spécifique, d'inoubliable.`);
+      addMsg({ role: "assistant", content: r, conc: true });
+      setConclusionDone(true);
+    } catch (e) { addMsg({ role: "assistant", content: e.message || "Erreur." }); setConclusionDone(true); }
+    setLoading(false);
+  }
+
+  function startPath(knowsDream, calibrationContext = "") {
+    sessionIdRef.current = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    setSatisfactionPhase(null); setSatisfactionNext(null);
+    setAwaitingSingularity(false); setConclusionDone(false);
     setMsgs([]); setBi(0); setQi(0); setAnswers({}); answersRef.current = {};
     setSyntheses({}); setValidated({}); setApiHist([]); apiHistRef.current = []; setShowSynth(false); setInput("");
     setBlueprint((p) => ({ ...p, parcours_dbr: p.parcours_dbr || (knowsDream ? "RITE" : "CHA") }));
@@ -340,22 +504,43 @@ Chaque question est là pour creuser. Réponds honnêtement, pas parfaitement. Y
 
 ${q0.q}`;
     const m = { role: "assistant", content: intro }; setMsgs([m]);
-    const h = [{ role: "assistant", content: intro }]; setApiHist(h); apiHistRef.current = h; setScreen("program");
+    const h = calibrationContext
+      ? [{ role: "user", content: calibrationContext }, { role: "assistant", content: intro }]
+      : [{ role: "assistant", content: intro }];
+    setApiHist(h); apiHistRef.current = h; setScreen("program");
   }
 
   function resumeSession(s) {
+    if (!sessionIdRef.current) sessionIdRef.current = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     setMsgs(s.msgs || []); setBi(s.bi || 0); setQi(s.qi || 0);
     setAnswers(s.answers || {}); answersRef.current = s.answers || {};
     setSyntheses(s.syntheses || {}); setValidated(s.validated || {});
     setApiHist(s.apiHist || []); apiHistRef.current = s.apiHist || [];
     const b = s.blocs || [...BLOCS_CHA, BLOC_5P, BLOC_VISION, ...BLOCS_RITE]; setBlocs(b); blocsRef.current = b;
     setShowSynth(false); setScreen(s.phase === "conclusion" ? "conclusion" : "program");
+    setSatisfactionPhase(null); setSatisfactionNext(null);
+    setAwaitingSingularity(false); setConclusionDone(false);
+  }
+
+  function handleAiguillageRoute({ decision, calibrationContext }) {
+    startPath(decision === "RITE", calibrationContext || "");
   }
 
   function handleSend() {
     if (loading) return;
-    if (sp.listening) { const final = sp.stopListen(); const txt = (final || input || "").trim(); setInput(""); if (taRef.current) taRef.current.style.height = "48px"; if (!txt) return; if (alreadyAnswered) submitFollowUp(txt, true); else submitAnswer(txt, true); return; }
-    const val = input.trim(); if (!val) return; setInput(""); if (taRef.current) taRef.current.style.height = "48px"; if (alreadyAnswered) submitFollowUp(val); else submitAnswer(val);
+    if (sp.listening) {
+      const final = sp.stopListen(); const txt = (final || input || "").trim();
+      setInput(""); if (taRef.current) taRef.current.style.height = "48px";
+      if (!txt) return;
+      if (awaitingSingularity) { submitSingularity(txt); return; }
+      if (satisfactionPhase) { submitSatisfaction(txt); return; }
+      if (alreadyAnswered) submitFollowUp(txt, true); else submitAnswer(txt, true);
+      return;
+    }
+    const val = input.trim(); if (!val) return; setInput(""); if (taRef.current) taRef.current.style.height = "48px";
+    if (awaitingSingularity) { submitSingularity(val); return; }
+    if (satisfactionPhase) { submitSatisfaction(val); return; }
+    if (alreadyAnswered) submitFollowUp(val); else submitAnswer(val);
   }
 
   function toggleMic() {
@@ -431,9 +616,57 @@ ${q0.q}`;
         </div>
       </ThemeCtx.Provider>
     );
-    return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onKnow={() => startPath(true)} onDontKnow={() => startPath(false)} onLogout={handleLogout} onBlueprint={() => openBlueprint("intro")} /></ThemeCtx.Provider>;
+    return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onRoute={handleAiguillageRoute} onLogout={handleLogout} onBlueprint={() => openBlueprint("intro")} /></ThemeCtx.Provider>;
   }
-  if (screen === "aiguillage") return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onKnow={() => startPath(true)} onDontKnow={() => startPath(false)} onLogout={handleLogout} onBlueprint={() => openBlueprint("aiguillage")} /></ThemeCtx.Provider>;
+  if (screen === "aiguillage") return <ThemeCtx.Provider value={T}><div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div><Aiguillage user={user} onRoute={handleAiguillageRoute} onLogout={handleLogout} onBlueprint={() => openBlueprint("aiguillage")} /></ThemeCtx.Provider>;
+
+  if (screen === "preblueprint") {
+    return (
+      <ThemeCtx.Provider value={T}>
+        <div style={{ position: "fixed", top: 16, right: 16, zIndex: 999 }}>{themeBtn}</div>
+        <div style={{ minHeight: "100vh", background: T.gradient, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ maxWidth: 620, width: "100%", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 18, padding: "34px 24px", textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.45, marginBottom: 24 }}>
+              Ce que tu viens de vivre mérite un moment.
+              <br />
+              Prends le temps qu'il te faut.
+              <br />
+              Le Blueprint t'attend quand tu es prêt.
+            </div>
+            {!preBlueprintReady && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 20 }}>
+                {[0, 1, 2].map((j) => (
+                  <div key={j} style={{ width: 9, height: 9, borderRadius: "50%", background: j % 2 === 0 ? T.orange : T.blue, animation: `pulse 1.1s ease-in-out ${j * 0.2}s infinite` }} />
+                ))}
+                <style>{`@keyframes pulse{0%,100%{opacity:.35;transform:scale(.9)}50%{opacity:1;transform:scale(1.15)}}`}</style>
+              </div>
+            )}
+            <button
+              onClick={() => setScreen("blueprint")}
+              disabled={!preBlueprintReady}
+              style={{
+                minHeight: 48,
+                width: "100%",
+                maxWidth: 320,
+                padding: "12px 18px",
+                background: preBlueprintReady ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.card,
+                border: `1px solid ${preBlueprintReady ? T.orange : T.border}`,
+                borderRadius: 10,
+                color: preBlueprintReady ? "#FFFFFF" : T.muted,
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: preBlueprintReady ? "pointer" : "not-allowed",
+                opacity: preBlueprintReady ? 1 : 0.7,
+                fontFamily: "inherit"
+              }}
+            >
+              Je suis prêt.
+            </button>
+          </div>
+        </div>
+      </ThemeCtx.Provider>
+    );
+  }
 
   // PROGRAM + CONCLUSION
   return (
@@ -509,6 +742,19 @@ ${q0.q}`;
               <button onClick={() => validateSynth(false)} style={{ flex: 1, padding: 14, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✎ Préciser</button>
             </div>
           )}
+          {satisfactionPhase && !loading && !showSynth && !showCopilotPrompt && (
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0" }}>
+              <button onClick={skipSatisfaction} style={{ padding: "10px 22px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Passer →</button>
+            </div>
+          )}
+          {awaitingSingularity && !loading && (
+            <div style={{ textAlign: "center", padding: "6px 0", fontSize: 12, color: T.muted, fontStyle: "italic" }}>Écris ta phrase librement. Imparfaite mais vraie.</div>
+          )}
+          {conclusionDone && !loading && screen === "conclusion" && (
+            <div style={{ textAlign: "center", padding: "28px 0" }}>
+              <button onClick={() => setScreen("preblueprint")} style={{ minHeight: 48, padding: "14px 36px", background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Vers mon Blueprint →</button>
+            </div>
+          )}
           {showCopilotPrompt && !loading && (
             <div style={{ margin: "12px 0", background: T.card, border: `2px solid ${T.orange}`, borderRadius: 14, padding: "20px 18px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -531,50 +777,36 @@ ${q0.q}`;
           <div ref={endRef} />
         </div>
 
-        {/* INPUT BAR */}
-        {screen === "program" && !showSynth && !showCopilotPrompt && (
+        {/* INPUT BAR — visible during program AND during singularity on conclusion screen */}
+        {(screen === "program" || (screen === "conclusion" && awaitingSingularity)) && !showSynth && !showCopilotPrompt && (
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.card, borderTop: `1px solid ${T.border}`, padding: "12px 16px 16px", boxShadow: `0 -8px 32px ${T.shadow}`, zIndex: 50 }}>
             <div style={{ maxWidth: 780, margin: "0 auto" }}>
               {sp.listening && <div style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 13, color: T.orange, display: "flex", gap: 8, alignItems: "center" }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: T.red, animation: "bounce 1s infinite" }} />{sp.liveText || "Je t'écoute…"}</div>}
               {micBlocked && <div style={{ background: "rgba(231,76,60,0.06)", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, padding: "8px 12px", marginBottom: 8, fontSize: 13, color: T.red }}>🎤 Autorise le micro dans les paramètres du navigateur.</div>}
-              {q && !isValidated && !sp.listening && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
+              {screen === "program" && q && !isValidated && !sp.listening && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question précédente"
-                  style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>←</button>
+                {screen === "program" && <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question précédente"
+                  style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>←</button>}
                 <textarea ref={taRef} value={sp.listening ? sp.liveText : input}
                   onClick={() => { if (sp.listening) { const final = sp.stopListen(); setInput(final || sp.liveText || ""); } }}
                   onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px"; }}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (loading) return; if (isValidated) { nextQ(); } else { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); } } }}
-                  placeholder={sp.listening ? "Tape ici pour éditer…" : q?.ph || "Écris ta réponse…"}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (loading) return; if (screen === "conclusion") { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); return; } if (isValidated) { nextQ(); } else { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); } } }}
+                  placeholder={sp.listening ? "Tape ici pour éditer…" : awaitingSingularity ? "Écris ta phrase, imparfaite mais vraie…" : q?.ph || "Écris ta réponse…"}
                   readOnly={false} disabled={loading}
                   style={{ flex: 1, padding: "12px 14px", background: T.inputBg, border: `1.5px solid ${T.border}`, borderRadius: 8, fontSize: 15, lineHeight: 1.6, resize: "none", height: 48, minHeight: 48, maxHeight: 140, fontFamily: "inherit", outline: "none", color: T.text, boxSizing: "border-box" }}
                   onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.border} />
                 {sp.hasSR && <button onClick={toggleMic} disabled={loading} style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", background: sp.listening ? T.red : "rgba(74,184,232,0.12)", color: sp.listening ? "#FFFFFF" : T.blue, fontSize: 20 }}>{sp.listening ? "⏹" : "🎤"}</button>}
-                <button onClick={() => { if (isValidated) nextQ(); else handleSend(); }}
+                <button onClick={() => { if (screen === "program" && isValidated) nextQ(); else handleSend(); }}
                   disabled={loading || (!input.trim() && !isValidated && !sp.listening)}
-                  style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", fontSize: 20, background: isValidated ? `linear-gradient(135deg,${T.green},#1e8449)` : (loading || (!input.trim() && !sp.listening)) ? T.cardBg : `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#FFFFFF" }}>
-                  {isValidated ? "→" : "↑"}
+                  style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", fontSize: 20, background: (screen === "program" && isValidated) ? `linear-gradient(135deg,${T.green},#1e8449)` : (loading || (!input.trim() && !sp.listening)) ? T.cardBg : `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#FFFFFF" }}>
+                  {(screen === "program" && isValidated) ? "→" : "↑"}
                 </button>
               </div>
-              {isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME}, ajoute une précision ou clique → pour continuer</div>}
+              {screen === "program" && isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME}, ajoute une précision ou clique → pour continuer</div>}
             </div>
           </div>
         )}
 
-        {/* J1 DATE PROMPT */}
-        {screen === "conclusion" && showJ1Prompt && !loading && (
-          <div style={{ position: "fixed", bottom: 72, left: 0, right: 0, zIndex: 60, padding: "0 16px" }}>
-            <div style={{ maxWidth: 780, margin: "0 auto", background: T.card, border: `2px solid ${T.orange}`, borderRadius: 14, padding: "16px 18px", boxShadow: `0 -8px 32px ${T.shadow}` }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>📅 Date de début J1</div>
-              <div style={{ fontSize: 13, color: T.muted, marginBottom: 10 }}>Fixe ta date de démarrage officielle, le premier jour de ton sprint de 7 jours.</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input type="date" value={j1DateInput} onChange={e => setJ1DateInput(e.target.value)} style={{ flex: 1, padding: "10px 12px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 8, fontSize: 14, color: T.text, outline: "none", fontFamily: "inherit" }} />
-                <button onClick={() => { if (!j1DateInput) return; const upd = { ...blueprint, start_date_j1: j1DateInput, updated_at: Date.now() }; setBlueprint(upd); setShowJ1Prompt(false); setJ1DateInput(""); fetch("/api/participant-profile", { method: "POST", headers: authHeaders(), body: JSON.stringify({ action: "upsert", profile: { ...upd, email: user.email } }) }).catch(() => {}); }} disabled={!j1DateInput} style={{ padding: "10px 20px", background: j1DateInput ? `linear-gradient(135deg,${T.orange},${T.orangeD})` : T.cardBg, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: j1DateInput ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: j1DateInput ? 1 : 0.5 }}>Enregistrer J1</button>
-                <button onClick={() => { setShowJ1Prompt(false); setJ1DateInput(""); }} style={{ padding: "10px 14px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, color: T.muted, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Plus tard</button>
-              </div>
-            </div>
-          </div>
-        )}
         {/* CONCLUSION FOOTER */}
         {screen === "conclusion" && !loading && (
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.card, borderTop: `1px solid ${T.border}`, padding: "14px 16px", boxShadow: `0 -8px 32px ${T.shadow}` }}>
