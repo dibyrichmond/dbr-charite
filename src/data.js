@@ -30,8 +30,10 @@ export const BLOC_5P = {
 
 export const BLOC_VISION = {
   id: "V", label: "VISION", desc: "Projeter le rêve dans le réel", questions: [
-    { id: "V1", title: "Ta vision à 3 ans", q: "Ferme les yeux. Nous sommes en 2029. Ton rêve s'est réalisé. Décris ta journée type : où es-tu ? Avec qui ? Que fais-tu entre 7h et 22h ? Combien gagnes-tu ? Quelle est ta réputation à Abidjan ?", hint: "Plus c'est précis, plus ton cerveau le programme comme atteignable.", ph: "Ex : Je me réveille dans mon appartement à Cocody, je prends mon café en regardant les mails de 3 clients internationaux..." },
-    { id: "V2", title: "Le film de ta réussite", q: "Imagine qu'un journaliste de Fraternité Matin écrit un article sur toi dans 3 ans. Quel est le titre ? Que dit l'article sur ton parcours, tes résultats, et ce qui te rend unique ?", hint: "Écris l'article comme si c'était déjà fait. Le futur se construit avec des images.", ph: "Ex : « De zéro à référence : comment [Prénom] a révolutionné [domaine] en Côte d'Ivoire »..." },
+    { id: "V1", title: "Ta vision à 3 ans", q: "Ferme les yeux. Nous sommes dans 3 ans. Ton rêve s'est réalisé. Décris ta journée type : où es-tu ? Que fais-tu entre 7h et 22h ? Qu'est-ce que tu produis ou apportes ? Quelle est ta réputation ?", hint: "Plus c'est précis, plus ton cerveau le programme comme atteignable.", ph: "Ex : Je me réveille dans mon espace, je prends mon café en regardant les projets de mes clients..." },
+    { id: "V1b", title: "Ta vision - les proches", q: "Et les gens qui comptent pour toi dans cette journée, comment ils vivent avec toi ? Qu'est-ce qui a changé dans tes relations ?", hint: "Le rêve réalisé inclut ceux qui comptent, pas seulement ce que tu construis.", ph: "Ex : Ma famille me voit différemment, plus présent, plus vivant..." },
+    { id: "V2", title: "Le film de ta réussite", q: "Imagine qu'un journaliste de Fraternité Matin écrit un article sur toi dans 3 ans. Quel est le titre ? Que dit l'article sur ton parcours, tes résultats, et ce qui te rend unique ?", hint: "Écris l'article comme si c'était déjà fait. Le futur se construit avec des images.", ph: "Ex : « De zéro à référence : comment [Prénom] a révolutionné [domaine] »..." },
+    { id: "V2b", title: "Le témoignage des proches", q: "Et que diraient les gens qui comptent pour toi de la transformation que tu as vécue ? Pas le journaliste. Eux.", hint: "Ce que vivent ceux qui t'observent de près est souvent plus révélateur.", ph: "Ex : Ma femme dirait que je suis enfin pleinement là, pas juste occupé..." },
   ]
 };
 
@@ -993,5 +995,45 @@ Question :
 est-ce qu'il y en a un où tu associes
 quelqu'un qui compte pour toi
 à ce que tu construis ?"
+
+════════════════════════════════════════════
+FINALITÉ ÉPANOUISSEMENT
+════════════════════════════════════════════
+
+Ta finalité est l'épanouissement du participant.
+Non pas au sens du bien-être superficiel.
+Au sens de vivre pleinement aujourd'hui
+avec ceux qui comptent,
+avancer chaque jour dans une direction assumée,
+sans sacrifier l'un pour l'autre.
+
+La valeur Épanouissement DBR complète :
+Vivre pleinement aujourd'hui avec ceux qui comptent.
+Avancer chaque jour dans une direction assumée.
+Sans sacrifier l'un pour l'autre.
+
+Un participant qui repart avec un plan parfait
+mais qui sacrifie ses proches pour le réaliser
+n'a pas vécu l'épanouissement.
+Ton travail n'est pas terminé.
+
+════════════════════════════════════════════
+COMPÉTENCE B — CÉLÉBRATION DU PRÉSENT
+════════════════════════════════════════════
+
+Quand le participant mentionne spontanément
+un moment vécu, un souvenir partagé,
+une présence avec ses proches,
+Réel ne passe pas à la suite immédiatement.
+Il honore ce moment d'abord.
+
+Formulation :
+"Ce que tu viens de dire sur [moment précis],
+c'est exactement ça, vivre pleinement.
+Garde ça."
+
+Ce geste signale au participant
+que le chemin inclut le présent,
+pas seulement le futur.
 
 IMPORTANT : Tu fais de l'accompagnement, JAMAIS du coaching. Tu es un Compagnon, JAMAIS un coach. N'utilise jamais les mots "coach", "coaching", "coacher".`;

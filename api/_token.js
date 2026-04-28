@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 
-const SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Use a dedicated TOKEN_SECRET env var (separate from the DB key).
+// Falls back to SUPABASE_SERVICE_ROLE_KEY for backward compatibility but
+// you MUST set TOKEN_SECRET to a separate value in production (Vercel dashboard).
+const SECRET = process.env.TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // ── Signed JWT-like token ──
 export function createToken(email, isAdmin) {

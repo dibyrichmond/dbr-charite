@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { verifyToken } from './_token.js'
 import { cors } from './_cors.js'
 
@@ -10,12 +11,17 @@ async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const cronSecret = process.env.CRON_SECRET;
-  const isInternal = cronSecret && req.headers['x-cron-secret'] === cronSecret;
-  if (!isInternal && !verifyToken(req.headers.authorization)) return res.status(401).json({ error: 'Non autorisé' });
+  const provided = req.headers['x-cron-secret'] || '';
+  const isInternal = !!(cronSecret && provided.length === cronSecret.length &&
+    (() => { try { return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(cronSecret)); } catch { return false; } })());
+  const auth = verifyToken(req.headers.authorization);
+  if (!isInternal && !auth) return res.status(401).json({ error: 'Non autorisé' });
 
   const { to, subject, html } = req.body;
   if (!to || !subject || !html) return res.status(400).json({ error: 'Missing fields' });
   if (!isValidEmail(typeof to === 'string' ? to : to[0])) return res.status(400).json({ error: 'Email invalide' });
+  // Non-internal callers can only send to their own email
+  if (!isInternal && to !== auth.email) return res.status(403).json({ error: 'Envoi non autorisé.' });
   if (typeof subject !== 'string' || subject.length > 200) return res.status(400).json({ error: 'Sujet invalide' });
   if (typeof html !== 'string' || html.length > 50000) return res.status(400).json({ error: 'Contenu trop long' });
 

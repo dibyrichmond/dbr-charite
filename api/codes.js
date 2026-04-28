@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 import { verifyToken } from './_token.js'
 import { cors } from './_cors.js'
 
@@ -8,7 +9,7 @@ const supabase = (() => {
   return url && key ? createClient(url, key) : null;
 })();
 
-function genCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
+function genCode() { return crypto.randomBytes(4).toString('hex').toUpperCase().slice(0, 6); }
 
 async function isAdmin(email) {
   if (!email || !supabase) return false;

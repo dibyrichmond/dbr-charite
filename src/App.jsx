@@ -35,6 +35,7 @@ export default function App() {
   const [pendingBlocIdx, setPendingBlocIdx] = useState(null);
   const [copilotDraft, setCopilotDraft] = useState({ name: "", contact: "" });
   const [preBlueprintReady, setPreBlueprintReady] = useState(false);
+  const [openingPhase, setOpeningPhase] = useState(false);
   const [satisfactionPhase, setSatisfactionPhase] = useState(null);
   const [satisfactionNext, setSatisfactionNext] = useState(null);
   const [awaitingSingularity, setAwaitingSingularity] = useState(false);
@@ -476,6 +477,17 @@ export default function App() {
     setLoading(false);
   }
 
+  // V2 — Opening phase: user answers "how are you", Réel listens without responding, then opens first bloc
+  async function submitOpeningResponse(text) {
+    if (!text.trim()) return;
+    setInput(""); if (taRef.current) taRef.current.style.height = "48px";
+    addMsg({ role: "user", content: text });
+    setApiHist(p => { const n = [...p, { role: "user", content: text }]; apiHistRef.current = n; return n; });
+    setOpeningPhase(false);
+    await wait(700);
+    openBlocAt(0);
+  }
+
   function startPath(knowsDream, calibrationContext = "") {
     sessionIdRef.current = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     setSatisfactionPhase(null); setSatisfactionNext(null);
@@ -485,29 +497,15 @@ export default function App() {
     setBlueprint((p) => ({ ...p, parcours_dbr: p.parcours_dbr || (knowsDream ? "RITE" : "CHA") }));
     const chosenBlocs = knowsDream ? [BLOC_5P, BLOC_VISION, ...BLOCS_RITE] : [...BLOCS_CHA, BLOC_5P, BLOC_VISION, ...BLOCS_RITE];
     setBlocs(chosenBlocs); blocsRef.current = chosenBlocs;
-    const b0 = chosenBlocs[0], q0 = b0.questions[0];
-    const path = knowsDream ? "5 Pourquoi → Vision → RITE" : "CHA → 5 Pourquoi → Vision → RITE";
-    const intro = `${user.name}, je suis Réel, ton Compagnon. Ce que tu t'apprêtes à vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?
-
-Ton parcours : **${path}**.
-
-Chaque question est là pour creuser. Réponds honnêtement, pas parfaitement. Y'a moyen !
-
----
-
-**BLOC ${b0.id} · ${b0.label}**
-*${b0.desc}*
-
----
-
-**${q0.title}**
-
-${q0.q}`;
-    const m = { role: "assistant", content: intro }; setMsgs([m]);
+    // V2 — Réel speaks first with the opening, before any bloc question
+    const openText = `Je suis là et j'ai tout mon temps. Ce que tu t'apprêtes à vivre, c'est quelque chose que peu de gens s'offrent vraiment.\n\nAvant qu'on commence, dis-moi simplement comment tu vas aujourd'hui. Pas ce que tu as accompli. Juste comment tu vas, toi.`;
+    const m = { role: "assistant", content: openText }; setMsgs([m]);
     const h = calibrationContext
-      ? [{ role: "user", content: calibrationContext }, { role: "assistant", content: intro }]
-      : [{ role: "assistant", content: intro }];
-    setApiHist(h); apiHistRef.current = h; setScreen("program");
+      ? [{ role: "user", content: calibrationContext }, { role: "assistant", content: openText }]
+      : [{ role: "assistant", content: openText }];
+    setApiHist(h); apiHistRef.current = h;
+    setOpeningPhase(true);
+    setScreen("program");
   }
 
   function resumeSession(s) {
@@ -518,6 +516,7 @@ ${q0.q}`;
     setApiHist(s.apiHist || []); apiHistRef.current = s.apiHist || [];
     const b = s.blocs || [...BLOCS_CHA, BLOC_5P, BLOC_VISION, ...BLOCS_RITE]; setBlocs(b); blocsRef.current = b;
     setShowSynth(false); setScreen(s.phase === "conclusion" ? "conclusion" : "program");
+    setOpeningPhase(false);
     setSatisfactionPhase(null); setSatisfactionNext(null);
     setAwaitingSingularity(false); setConclusionDone(false);
   }
@@ -532,12 +531,14 @@ ${q0.q}`;
       const final = sp.stopListen(); const txt = (final || input || "").trim();
       setInput(""); if (taRef.current) taRef.current.style.height = "48px";
       if (!txt) return;
+      if (openingPhase) { submitOpeningResponse(txt); return; }
       if (awaitingSingularity) { submitSingularity(txt); return; }
       if (satisfactionPhase) { submitSatisfaction(txt); return; }
       if (alreadyAnswered) submitFollowUp(txt, true); else submitAnswer(txt, true);
       return;
     }
     const val = input.trim(); if (!val) return; setInput(""); if (taRef.current) taRef.current.style.height = "48px";
+    if (openingPhase) { submitOpeningResponse(val); return; }
     if (awaitingSingularity) { submitSingularity(val); return; }
     if (satisfactionPhase) { submitSatisfaction(val); return; }
     if (alreadyAnswered) submitFollowUp(val); else submitAnswer(val);
@@ -684,11 +685,11 @@ ${q0.q}`;
                 {tokenWarning && <span style={{ fontSize: 10, color: T.red, fontWeight: 600 }}>⚠ Session expire bientôt</span>}
                 {savedOk && <span style={{ fontSize: 10, color: T.green }}>✓ Sauvé</span>}
                 {themeBtn}
-                <button onClick={() => openBlueprint(screen)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Blueprint</button>
+                <button title="Blueprint 90 jours" onClick={() => openBlueprint(screen)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Blueprint</button>
                 {user.isAdmin && <button onClick={() => setShowAdmin(true)} style={{ padding: "4px 10px", background: "rgba(74,184,232,0.1)", border: "1px solid rgba(74,184,232,0.2)", borderRadius: 6, fontSize: 11, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>}
-                <button onClick={() => { doSave(true); setScreen("intro"); }} style={{ padding: "4px 10px", background: "rgba(39,174,96,0.1)", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 6, fontSize: 11, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>🏠</button>
-                <button onClick={handleLogout} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, fontSize: 11, color: T.red, cursor: "pointer", fontFamily: "inherit", opacity: 0.8 }}>↪</button>
-                <button onClick={download} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⬇</button>
+                <button title="Accueil" onClick={() => { doSave(true); setScreen("intro"); }} style={{ padding: "4px 10px", background: "rgba(39,174,96,0.1)", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 6, fontSize: 11, color: T.green, cursor: "pointer", fontFamily: "inherit" }}>🏠</button>
+                <button title="Déconnexion" onClick={handleLogout} style={{ padding: "4px 10px", background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 6, fontSize: 11, color: T.red, cursor: "pointer", fontFamily: "inherit", opacity: 0.8 }}>↪</button>
+                <button title="Télécharger ma conversation" onClick={download} style={{ padding: "4px 10px", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>⬇</button>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 90, height: 7, background: T.border, borderRadius: 4, overflow: "hidden", position: "relative" }}>
                     <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg,${T.orange},${T.blue})`, borderRadius: 4, transition: "width 0.6s ease", boxShadow: pct > 0 ? "0 0 8px rgba(232,84,10,0.4)" : "none" }} />
@@ -703,7 +704,7 @@ ${q0.q}`;
                   const done = !!validated[b.id]; const active = i === bi;
                   return (
                     <div key={b.id} style={{ display: "flex", alignItems: "center" }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 4px" }}>
+                      <div title={b.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 4px", cursor: "default" }}>
                         <div style={{
                           width: active ? 22 : 16, height: active ? 22 : 16, borderRadius: "50%",
                           background: done ? T.green : active ? T.orange : "transparent",
@@ -783,26 +784,26 @@ ${q0.q}`;
             <div style={{ maxWidth: 780, margin: "0 auto" }}>
               {sp.listening && <div style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 13, color: T.orange, display: "flex", gap: 8, alignItems: "center" }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: T.red, animation: "bounce 1s infinite" }} />{sp.liveText || "Je t'écoute…"}</div>}
               {micBlocked && <div style={{ background: "rgba(231,76,60,0.06)", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, padding: "8px 12px", marginBottom: 8, fontSize: 13, color: T.red }}>🎤 Autorise le micro dans les paramètres du navigateur.</div>}
-              {screen === "program" && q && !isValidated && !sp.listening && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
+              {screen === "program" && q && !isValidated && !sp.listening && !openingPhase && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                 {screen === "program" && <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question précédente"
                   style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>←</button>}
                 <textarea ref={taRef} value={sp.listening ? sp.liveText : input}
                   onClick={() => { if (sp.listening) { const final = sp.stopListen(); setInput(final || sp.liveText || ""); } }}
                   onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px"; }}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (loading) return; if (screen === "conclusion") { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); return; } if (isValidated) { nextQ(); } else { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); } } }}
-                  placeholder={sp.listening ? "Tape ici pour éditer…" : awaitingSingularity ? "Écris ta phrase, imparfaite mais vraie…" : q?.ph || "Écris ta réponse…"}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (loading) return; if (screen === "conclusion") { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); return; } const inputVal = (sp.listening ? sp.liveText : input || "").trim(); if (isValidated && !inputVal && !openingPhase) { nextQ(); return; } if (!inputVal) return; handleSend(); } }}
+                  placeholder={sp.listening ? "Tape ici pour éditer…" : openingPhase ? "Comment tu vas aujourd'hui ?" : awaitingSingularity ? "Écris ta phrase, imparfaite mais vraie…" : q?.ph || "Écris ta réponse…"}
                   readOnly={false} disabled={loading}
                   style={{ flex: 1, padding: "12px 14px", background: T.inputBg, border: `1.5px solid ${T.border}`, borderRadius: 8, fontSize: 15, lineHeight: 1.6, resize: "none", height: 48, minHeight: 48, maxHeight: 140, fontFamily: "inherit", outline: "none", color: T.text, boxSizing: "border-box" }}
                   onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.border} />
                 {sp.hasSR && <button onClick={toggleMic} disabled={loading} style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", background: sp.listening ? T.red : "rgba(74,184,232,0.12)", color: sp.listening ? "#FFFFFF" : T.blue, fontSize: 20 }}>{sp.listening ? "⏹" : "🎤"}</button>}
-                <button onClick={() => { if (screen === "program" && isValidated) nextQ(); else handleSend(); }}
-                  disabled={loading || (!input.trim() && !isValidated && !sp.listening)}
-                  style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", fontSize: 20, background: (screen === "program" && isValidated) ? `linear-gradient(135deg,${T.green},#1e8449)` : (loading || (!input.trim() && !sp.listening)) ? T.cardBg : `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#FFFFFF" }}>
-                  {(screen === "program" && isValidated) ? "→" : "↑"}
+                <button onClick={() => { const iHasText = (sp.listening ? sp.liveText || "" : input).trim(); if (screen === "program" && isValidated && !iHasText && !openingPhase) nextQ(); else handleSend(); }}
+                  disabled={loading || (!input.trim() && !isValidated && !sp.listening && !openingPhase)}
+                  style={{ width: 48, height: 48, borderRadius: 8, border: "none", flexShrink: 0, cursor: "pointer", fontSize: 20, background: (screen === "program" && isValidated && !input.trim() && !openingPhase) ? `linear-gradient(135deg,${T.green},#1e8449)` : (loading || (!input.trim() && !sp.listening)) ? T.cardBg : `linear-gradient(135deg,${T.orange},${T.orangeD})`, color: "#FFFFFF" }}>
+                  {(screen === "program" && isValidated && !input.trim() && !openingPhase) ? "→" : "↑"}
                 </button>
               </div>
-              {screen === "program" && isValidated && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME}, ajoute une précision ou clique → pour continuer</div>}
+              {screen === "program" && isValidated && !openingPhase && <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: T.green }}>✓ Réponse validée par {APP_NAME}, ajoute une précision ou clique → pour continuer</div>}
             </div>
           </div>
         )}

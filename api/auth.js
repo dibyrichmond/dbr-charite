@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
-import { createToken, hashPassword, verifyPassword, isLegacyHash } from './_token.js'
+import { createToken, hashPassword, verifyPassword, isLegacyHash, escapeHtml } from './_token.js'
 import { cors } from './_cors.js'
 
 const supabase = (() => {
@@ -109,7 +109,7 @@ async function handler(req, res) {
                 <span style="font-size:28px;font-weight:900;color:#E8540A;letter-spacing:4px;">DBR</span>
                 <div style="font-size:11px;color:#4AB8E8;letter-spacing:3px;margin-top:4px;">MÉTHODE CHARITÉ</div>
               </div>
-              <p>Bonjour <strong>${user.name || ''}</strong>,</p>
+              <p>Bonjour <strong>${escapeHtml(user.name || '')}</strong>,</p>
               <p>Tu as demandé la réinitialisation de ton mot de passe.</p>
               <p style="text-align:center;margin:24px 0;">
                 <a href="${resetLink}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#E8540A,#C4420A);color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">Créer un nouveau mot de passe</a>
@@ -148,8 +148,8 @@ async function handler(req, res) {
     }
 
     return res.status(400).json({ error: 'Action invalide.' });
-  } catch (err) {
-    return res.status(500).json({ error: 'Erreur serveur: ' + (err.message || 'inconnue') });
+  } catch {
+    return res.status(500).json({ error: 'Erreur serveur.' });
   }
 }
 

@@ -14,19 +14,19 @@ export default function Aiguillage({ user, onRoute, onKnow, onDontKnow, onLogout
     {
       key: "q1",
       title: "Question 1",
-      text: "Qu'est-ce qui t'a amene ici aujourd'hui ? Pas la reponse reflechie. La premiere chose qui te vient.",
-      placeholder: "Ecris librement ce qui t'a amene ici aujourd'hui..."
+      text: "Qu'est-ce qui t'a amené ici aujourd'hui ? Pas la réponse réfléchie. La première chose qui te vient.",
+      placeholder: "Écris librement ce qui t'a amené ici aujourd'hui..."
     },
     {
       key: "q2",
       title: "Question 2",
-      text: "Si tu devais decrire en une phrase ou tu en es dans ta vie en ce moment, ce serait quoi ?",
-      placeholder: "Decris ou tu en es aujourd'hui..."
+      text: "Si tu devais décrire en une phrase où tu en es dans ta vie en ce moment, ce serait quoi ?",
+      placeholder: "Décris où tu en es aujourd'hui..."
     },
     {
       key: "q3",
       title: "Question 3",
-      text: "Y a-t-il quelque chose que tu portes en ce moment et que tu n'as encore dit a personne ?",
+      text: "Y a-t-il quelque chose que tu portes en ce moment et que tu n'as encore dit à personne ?",
       placeholder: "Tu peux poser des mots simples, avec ton rythme..."
     }
   ];
@@ -38,20 +38,20 @@ export default function Aiguillage({ user, onRoute, onKnow, onDontKnow, onLogout
     if (!canNext || loading) return;
     setLoading(true);
 
-    const calibrationContext = `Contexte d'entree du participant avant le parcours.
-Reponse 1 sur ce qui l'a amene :
+    const calibrationContext = `Contexte d'entrée du participant avant le parcours.
+Réponse 1 sur ce qui l'a amené :
 ${answers.q1.trim()}
-Reponse 2 sur ou il en est :
+Réponse 2 sur où il en est :
 ${answers.q2.trim()}
-Reponse 3 sur ce qu'il porte :
+Réponse 3 sur ce qu'il porte :
 ${answers.q3.trim()}
-Utilise ces informations pour calibrer ton ton et l'intensite de ta premiere question. Ne les cite pas directement. Laisse-les informer ta presence.`;
+Utilise ces informations pour calibrer ton ton et l'intensité de ta première question. Ne les cite pas directement. Laisse-les informer ta présence.`;
 
-    const evalPrompt = `Le participant vient de repondre a la question d'orientation suivante :
-'Tu as une idee de direction ? Dis-moi en une phrase ce que c'est. Sans reflechir trop longtemps.'
-Sa reponse est : ${answers.orientation.trim()}
+    const evalPrompt = `Le participant vient de répondre à la question d'orientation suivante :
+'Tu as une idée de direction ? Dis-moi en une phrase ce que c'est. Sans réfléchir trop longtemps.'
+Sa réponse est : ${answers.orientation.trim()}
 
-Contexte d'entree :
+Contexte d'entrée :
 ${calibrationContext}
 
 Evalue cette reponse selon trois criteres.
@@ -126,10 +126,10 @@ En cas de doute : decision = CHA.`;
 
         <div style={{ background: T.cardBg, border: "1px solid rgba(232,84,10,0.25)", borderRadius: 16, padding: "36px 28px" }}>
           <div style={{ fontSize: 15, fontWeight: 500, color: T.orange, marginBottom: 8, textAlign: "center", fontStyle: "italic", lineHeight: 1.6 }}>
-            "Je suis Reel. Ce que tu t'appretes a vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?"
+            "Je suis Réel. Ce que tu t'apprêtes à vivre, c'est le plus beau cadeau que tu puisses t'offrir. On commence ?"
           </div>
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", marginBottom: 18, lineHeight: 1.5 }}>
-            Quelques questions d'entree pour ajuster le parcours avec justesse.
+            Quelques questions d'entrée pour ajuster le parcours avec justesse.
           </div>
 
           {!routeMsg && step < 3 && (
@@ -160,12 +160,12 @@ En cas de doute : decision = CHA.`;
             <div>
               <div style={{ fontSize: 12, color: T.blue, fontWeight: 700, letterSpacing: "0.5px", marginBottom: 8 }}>Question d'orientation</div>
               <div style={{ fontSize: 15, color: T.textDim, marginBottom: 10, lineHeight: 1.6 }}>
-                Tu as une idee de direction ? Dis-moi en une phrase ce que c'est. Sans reflechir trop longtemps.
+                Tu as une idée de direction ? Dis-moi en une phrase ce que c'est. Sans réfléchir trop longtemps.
               </div>
               <textarea
                 value={answers.orientation}
                 onChange={(e) => setAnswers((p) => ({ ...p, orientation: e.target.value }))}
-                placeholder="Ecris ta direction en une phrase simple..."
+                placeholder="Écris ta direction en une phrase simple..."
                 rows={3}
                 style={{ width: "100%", padding: "12px 14px", background: T.inputBg, border: `1px solid ${T.inputBorder}`, borderRadius: 10, color: T.text, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", lineHeight: 1.6, marginBottom: 8 }}
               />

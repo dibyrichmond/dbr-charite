@@ -25,5 +25,3 @@ export function cors(handler) {
     return handler(req, res);
   };
 }
-  };
-}
