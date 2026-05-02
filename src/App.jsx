@@ -601,7 +601,7 @@ export default function App() {
                 {savedSession.savedAt && new Date(savedSession.savedAt).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
               </div>
               <button onClick={() => resumeSession(savedSession)} style={{ width: "100%", padding: 15, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 10, fontSize: 16, fontWeight: 700, color: "#FFFFFF", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" }}>Reprendre où j'en étais →</button>
-              <button onClick={() => { setSavedSession(null); setScreen("aiguillage"); }} style={{ width: "100%", padding: 13, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Recommencer un nouveau parcours</button>
+              <button onClick={() => { if (!window.confirm("Recommencer un nouveau parcours ? La session en cours sera effacée.")) return; setSavedSession(null); setScreen("aiguillage"); }} style={{ width: "100%", padding: 13, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.muted, cursor: "pointer", fontFamily: "inherit" }}>Recommencer un nouveau parcours</button>
               {pastSessions.length > 0 && <button onClick={() => setShowHistory(!showHistory)} style={{ width: "100%", marginTop: 8, padding: 11, background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Mes parcours passés ({pastSessions.length})</button>}
               <button onClick={() => openBlueprint("intro")} style={{ width: "100%", marginTop: 8, padding: 11, background: "rgba(74,184,232,0.08)", border: `1px solid rgba(74,184,232,0.2)`, borderRadius: 10, fontSize: 13, color: T.blue, cursor: "pointer", fontFamily: "inherit" }}>📘 Mon Blueprint 90 jours</button>
               {showHistory && pastSessions.map((s, i) => (
@@ -784,7 +784,7 @@ export default function App() {
             <div style={{ maxWidth: 780, margin: "0 auto" }}>
               {sp.listening && <div style={{ background: "rgba(232,84,10,0.06)", border: "1px solid rgba(232,84,10,0.15)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 13, color: T.orange, display: "flex", gap: 8, alignItems: "center" }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: T.red, animation: "bounce 1s infinite" }} />{sp.liveText || "Je t'écoute…"}</div>}
               {micBlocked && <div style={{ background: "rgba(231,76,60,0.06)", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, padding: "8px 12px", marginBottom: 8, fontSize: 13, color: T.red }}>🎤 Autorise le micro dans les paramètres du navigateur.</div>}
-              {screen === "program" && q && !isValidated && !sp.listening && !openingPhase && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
+              {screen === "program" && q && !isValidated && !sp.listening && !openingPhase && !satisfactionPhase && <div style={{ fontSize: 12, color: T.muted, marginBottom: 6, fontStyle: "italic" }}>💡 {q.hint}</div>}
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                 {screen === "program" && <button onClick={goBack} disabled={loading || (bi === 0 && qi === 0)} title="Question précédente"
                   style={{ width: 44, height: 48, borderRadius: 8, flexShrink: 0, cursor: bi === 0 && qi === 0 ? "not-allowed" : "pointer", background: bi === 0 && qi === 0 ? T.cardBg : "rgba(232,84,10,0.12)", border: `2px solid ${bi === 0 && qi === 0 ? T.border : "rgba(232,84,10,0.5)"}`, color: bi === 0 && qi === 0 ? T.muted : T.orange, fontSize: 20, fontWeight: 700 }}>←</button>}
@@ -792,7 +792,7 @@ export default function App() {
                   onClick={() => { if (sp.listening) { const final = sp.stopListen(); setInput(final || sp.liveText || ""); } }}
                   onChange={e => { setInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px"; }}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (loading) return; if (screen === "conclusion") { const val = (sp.listening ? sp.liveText : input || "").trim(); if (!val) return; handleSend(); return; } const inputVal = (sp.listening ? sp.liveText : input || "").trim(); if (isValidated && !inputVal && !openingPhase) { nextQ(); return; } if (!inputVal) return; handleSend(); } }}
-                  placeholder={sp.listening ? "Tape ici pour éditer…" : openingPhase ? "Comment tu vas aujourd'hui ?" : awaitingSingularity ? "Écris ta phrase, imparfaite mais vraie…" : q?.ph || "Écris ta réponse…"}
+                  placeholder={sp.listening ? "Tape ici pour éditer…" : openingPhase ? "Comment tu vas aujourd'hui ?" : satisfactionPhase ? "Ex : 8 / 10…" : awaitingSingularity ? "Écris ta phrase, imparfaite mais vraie…" : q?.ph || "Écris ta réponse…"}
                   readOnly={false} disabled={loading}
                   style={{ flex: 1, padding: "12px 14px", background: T.inputBg, border: `1.5px solid ${T.border}`, borderRadius: 8, fontSize: 15, lineHeight: 1.6, resize: "none", height: 48, minHeight: 48, maxHeight: 140, fontFamily: "inherit", outline: "none", color: T.text, boxSizing: "border-box" }}
                   onFocus={e => e.target.style.borderColor = T.orange} onBlur={e => e.target.style.borderColor = T.border} />
@@ -809,7 +809,7 @@ export default function App() {
         )}
 
         {/* CONCLUSION FOOTER */}
-        {screen === "conclusion" && !loading && (
+        {screen === "conclusion" && !loading && !awaitingSingularity && (
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.card, borderTop: `1px solid ${T.border}`, padding: "14px 16px", boxShadow: `0 -8px 32px ${T.shadow}` }}>
             <div style={{ maxWidth: 780, margin: "0 auto", display: "flex", gap: 10 }}>
               <button onClick={download} style={{ flex: 1, padding: 14, background: `linear-gradient(135deg,${T.orange},${T.orangeD})`, border: "none", borderRadius: 8, color: "#FFFFFF", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>⬇ Télécharger mon parcours</button>

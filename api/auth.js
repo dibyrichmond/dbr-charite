@@ -13,9 +13,33 @@ function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length < 200;
 }
 
+// Brute-force protection: 10 attempts per 5 minutes per IP
+const AUTH_WINDOW_MS = 5 * 60 * 1000;
+const AUTH_MAX = 10;
+async function checkAuthRateLimit(ip) {
+  if (!supabase) return true;
+  const key = `auth:${ip}`;
+  const now = Date.now();
+  try {
+    const { data } = await supabase.from('dbr_rate_limits').select('count, window_start').eq('ip', key).maybeSingle();
+    if (!data || now - data.window_start > AUTH_WINDOW_MS) {
+      await supabase.from('dbr_rate_limits').upsert({ ip: key, count: 1, window_start: now }, { onConflict: 'ip' });
+      return true;
+    }
+    if (data.count >= AUTH_MAX) return false;
+    await supabase.from('dbr_rate_limits').update({ count: data.count + 1 }).eq('ip', key);
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!supabase) return res.status(500).json({ error: 'Base de données non configurée. Configure SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY.' });
+
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  if (!(await checkAuthRateLimit(ip))) return res.status(429).json({ error: 'Trop de tentatives. Attends 5 minutes avant de réessayer.' });
 
   const { action, email, password, name, invCode } = req.body || {};
   const em = typeof email === 'string' ? email.toLowerCase().trim() : '';

@@ -68,7 +68,13 @@ function sanitizePayload(payload) {
     copilot_contact: cleanPhone(p.copilot_contact),
     status: cleanChoice(String(p.status || ''), STATUT_VALUES),
     return_rule: cleanText(p.return_rule, 1000),
-    sprint_notes: typeof p.sprint_notes === 'object' && p.sprint_notes ? p.sprint_notes : {},
+    sprint_notes: (() => {
+      const SPRINT_KEYS = new Set(['J1', 'J2-J3', 'J4', 'J5-J6', 'J7']);
+      const raw = typeof p.sprint_notes === 'object' && p.sprint_notes ? p.sprint_notes : {};
+      const clean = {};
+      for (const k of SPRINT_KEYS) { if (typeof raw[k] === 'string') clean[k] = raw[k].trim().slice(0, 500); else clean[k] = ''; }
+      return clean;
+    })(),
     singularity_phrase: cleanText(p.singularity_phrase, 2000),
     engagements_proches: cleanText(p.engagements_proches, 3000),
     ritual_trigger: cleanText(p.ritual_trigger, 500),
@@ -247,12 +253,22 @@ async function handler(req, res) {
       const targetEmail = typeof req.body?.targetEmail === 'string' ? req.body.targetEmail.toLowerCase().trim() : '';
       if (!targetEmail) return res.status(400).json({ error: 'Email requis.' });
 
-      const allowed = ['status', 'start_date_j1', 'accompagnement_mode'];
+      const raw = req.body?.updates || {};
       const updates = {};
-      for (const key of allowed) {
-        if (req.body?.updates?.[key] !== undefined) {
-          updates[key] = req.body.updates[key];
-        }
+      if (raw.status !== undefined) {
+        const v = cleanChoice(String(raw.status || ''), STATUT_VALUES);
+        if (!v) return res.status(400).json({ error: 'Valeur de statut invalide.' });
+        updates.status = v;
+      }
+      if (raw.start_date_j1 !== undefined) {
+        const v = cleanDate(String(raw.start_date_j1 || ''));
+        if (raw.start_date_j1 && !v) return res.status(400).json({ error: 'Date invalide (YYYY-MM-DD attendu).' });
+        updates.start_date_j1 = v;
+      }
+      if (raw.accompagnement_mode !== undefined) {
+        const v = cleanChoice(String(raw.accompagnement_mode || ''), MODE_VALUES);
+        if (!v) return res.status(400).json({ error: 'Mode accompagnement invalide.' });
+        updates.accompagnement_mode = v;
       }
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'Aucune mise a jour fournie.' });
       updates.updated_at = Date.now();

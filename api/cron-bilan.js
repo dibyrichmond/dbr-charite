@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 import { escapeHtml } from './_token.js'
 import { cors } from './_cors.js'
 
@@ -13,7 +14,12 @@ const supabase = SUPABASE_URL && SUPABASE_SERVICE_KEY
   : null
 
 async function handler(req, res) {
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+  const secret = process.env.CRON_SECRET || '';
+  const provided = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const authOk = secret.length > 0 && provided.length === secret.length && (() => {
+    try { return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret)); } catch { return false; }
+  })();
+  if (!authOk) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
   if (!supabase) {
