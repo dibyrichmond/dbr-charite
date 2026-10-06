@@ -21,7 +21,7 @@ export default function BlueprintScreen({ user, profile, onChange, onSave, onBac
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 400,
+          model: "claude-3-5-sonnet-latest", max_tokens: 400,
           system: "Tu génères des messages courts, sincères, non flatteurs. Jamais de tiret long. Jamais 'coach' ou 'coaching'.",
           messages: [{ role: "user", content: `Génère un message court (moins de 150 mots) à envoyer au Co-Pilote.\nPrénom du Co-Pilote : ${profile.copilot_name || "Co-Pilote"}\nPrénom du participant : ${user?.name || "le participant"}\nRêve racine : ${profile.dream_root || "..."}\nPhrase de singularité : ${profile.singularity_phrase || "..."}\n\nLe message doit être sincère, non flatteur, et donner au Co-Pilote un rôle précis et concret.` }]
         })

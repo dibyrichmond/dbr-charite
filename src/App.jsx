@@ -194,7 +194,7 @@ export default function App() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system: SYSTEM, messages: hist })
+      body: JSON.stringify({ model: "claude-3-5-sonnet-latest", max_tokens: 1024, system: SYSTEM, messages: hist })
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -410,7 +410,7 @@ export default function App() {
     const prompt = `Voici l'échange du bloc ${blocId} :\n${recentMsgs}\n\nIdentifie les moments de vérité.\nUn moment de vérité est : une phrase dite avec émotion inhabituelle, une réponse qui a surpris, une peur nommée pour la première fois, une contradiction résolue.\n\nRéponds uniquement avec ce JSON valide :\n{"moments":[{"bloc":"${blocId}","texte":"phrase exacte du participant","type":"emotion|surprise|peur|contradiction"}]}\n\nSi aucun moment, retourne {"moments":[]}.`;
     fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 600, system: "Tu extrais des moments de vérité d'un échange. Réponds uniquement en JSON valide.", messages: [{ role: "user", content: prompt }] })
+      body: JSON.stringify({ model: "claude-3-5-sonnet-latest", max_tokens: 600, system: "Tu extrais des moments de vérité d'un échange. Réponds uniquement en JSON valide.", messages: [{ role: "user", content: prompt }] })
     }).then(r => r.ok ? r.json() : null).then(data => {
       if (!data) return;
       const text = data.content?.find(b => b.type === "text")?.text || "";

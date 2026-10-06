@@ -40,9 +40,16 @@ async function handler(req, res) {
     return res.status(400).json({ error: 'Messages invalides' });
   if (messages.length > 100) return res.status(400).json({ error: 'Historique trop long' });
 
-  // Whitelist modèles autorisés
-  const ALLOWED_MODELS = ['claude-sonnet-4-20250514','claude-haiku-4-5-20251001'];
-  const safeModel = ALLOWED_MODELS.includes(model) ? model : 'claude-sonnet-4-20250514';
+  // Whitelist modèles autorisés. On privilégie des modèles plus largement disponibles
+  // chez Anthropic, tout en gardant une compatibilité en arrière pour les projets déjà en place.
+  const ALLOWED_MODELS = [
+    'claude-3-5-sonnet-latest',
+    'claude-3-5-haiku-latest',
+    'claude-3-7-sonnet-latest',
+    'claude-sonnet-4-20250514',
+    'claude-haiku-4-5-20251001'
+  ];
+  const safeModel = ALLOWED_MODELS.includes(model) ? model : 'claude-3-5-sonnet-latest';
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Configuration serveur manquante' });
